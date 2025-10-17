@@ -3,6 +3,11 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 
+// Import routes
+import projectsRouter from './routes/projects';
+import entriesRouter from './routes/entries';
+import glossaryRouter from './routes/glossary';
+
 // Load environment variables
 dotenv.config();
 
@@ -23,14 +28,14 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
     version: '1.0.0'
   });
 });
 
-// API routes will be imported here
+// API routes
 app.get('/api', (req: Request, res: Response) => {
   res.json({
     message: 'Glossary Tool API',
@@ -45,6 +50,11 @@ app.get('/api', (req: Request, res: Response) => {
     }
   });
 });
+
+// Mount routes
+app.use('/api/projects', projectsRouter);
+app.use('/api/entries', entriesRouter);
+app.use('/api/glossary', glossaryRouter);
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: any) => {
