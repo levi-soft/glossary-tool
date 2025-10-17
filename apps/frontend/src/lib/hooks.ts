@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { projectsApi, entriesApi, glossaryApi } from './api'
+import { projectsApi, entriesApi, glossaryApi, aiApi } from './api'
 import type {
   CreateProjectDto,
   UpdateProjectDto,
@@ -275,6 +275,65 @@ export function useApplyGlossaryTerm() {
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Lỗi khi áp dụng thuật ngữ')
     },
+  })
+}
+
+// ==================== AI Translation Hooks ====================
+
+export function useAITranslate() {
+  return useMutation({
+    mutationFn: (data: {
+      text: string
+      sourceLang: string
+      targetLang: string
+      contextType?: string
+      projectId?: string
+      useGlossary?: boolean
+    }) => aiApi.translate(data),
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Lỗi khi gọi AI translation')
+    },
+  })
+}
+
+export function useAITranslateEntry() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ entryId, useGlossary = true }: { entryId: string; useGlossary?: boolean }) =>
+      aiApi.translateEntry(entryId, useGlossary),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['entries', variables.entryId] })
+      toast.success('AI translation hoàn thành!')
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Lỗi khi gọi AI translation')
+    },
+  })
+}
+
+export function useAIBatchTranslate() {
+  return useMutation({
+    mutationFn: (data: {
+      texts: string[]
+      sourceLang: string
+      targetLang: string
+      projectId?: string
+      useGlossary?: boolean
+    }) => aiApi.batchTranslate(data),
+    onSuccess: (results) => {
+      toast.success(`Đã dịch ${results.length} texts!`)
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Lỗi khi batch translate')
+    },
+  })
+}
+
+export function useAICapabilities() {
+  return useQuery({
+    queryKey: ['ai', 'capabilities'],
+    queryFn: aiApi.getCapabilities,
   })
 }
 

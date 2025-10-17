@@ -11,8 +11,10 @@ import {
   Loader2,
   FolderOpen,
 } from 'lucide-react'
-import { useProject, useEntries, useUpdateEntry } from '@/lib/hooks'
+import { useProject, useEntries, useUpdateEntry, useAITranslateEntry } from '@/lib/hooks'
 import { EntryStatus } from '@/lib/types'
+import ImportModal from '@/components/ImportModal'
+import toast from 'react-hot-toast'
 
 const STATUS_LABELS = {
   UNTRANSLATED: { label: 'Chưa dịch', color: 'bg-gray-100 text-gray-700' },
@@ -29,6 +31,8 @@ export default function ProjectDetailPage() {
   const [filterStatus, setFilterStatus] = useState<EntryStatus | 'ALL'>('ALL')
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   // Fetch project and entries
   const { data: project, isLoading: projectLoading } = useProject(id)
@@ -45,6 +49,34 @@ export default function ProjectDetailPage() {
   })
 
   const updateEntry = useUpdateEntry()
+  const aiTranslate = useAITranslateEntry()
+
+  const handleExport = async (format: string = 'json') => {
+    setExporting(true)
+    try {
+      const response = await fetch(`/api/export/${id}?format=${format}`)
+      
+      if (!response.ok) {
+        throw new Error('Export failed')
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${project?.name || 'export'}_${format}_${new Date().toISOString().split('T')[0]}.${format}`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      
+      toast.success('Export thành công!')
+    } catch (error) {
+      toast.error('Lỗi khi export file')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   // Reset page when filters change
   useEffect(() => {
@@ -117,12 +149,23 @@ export default function ProjectDetailPage() {
             <BookOpen size={18} />
             <span>Glossary</span>
           </Link>
-          <button className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
             <Upload size={18} />
             <span>Import</span>
           </button>
-          <button className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-            <Download size={18} />
+          <button
+            onClick={() => handleExport(project.gameFormat)}
+            disabled={exporting || entries.length === 0}
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {exporting ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Download size={18} />
+            )}
             <span>Export</span>
           </button>
         </div>
@@ -194,7 +237,10 @@ export default function ProjectDetailPage() {
           <p className="text-gray-600 mb-4">
             Import file game để bắt đầu dịch
           </p>
-          <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg">
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
+          >
             <Upload size={18} className="inline mr-2" />
             Import File
           </button>
@@ -273,14 +319,24 @@ export default function ProjectDetailPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        {entry.aiSuggestions && (
-                          <button
-                            className="p-1 hover:bg-blue-100 rounded transition-colors"
-                            title="AI Suggestion available"
-                          >
-                            <Sparkles size={16} className="text-blue-600" />
-                          </button>
-                        )}
+                        <button
+                          className={`p-1 rounded transition-colors ${
+                            entry.aiSuggestions
+                              ? 'hover:bg-blue-100 text-blue-600'
+                              : 'hover:bg-gray-100 text-gray-400'
+                          }`}
+                          title={
+                            entry.aiSuggestions
+                              ? 'AI Suggestion có sẵn - Click để xem'
+                              : 'Click để request AI translation'
+                          }
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setSelectedEntry(entry.id)
+                          }}
+                        >
+                          <Sparkles size={16} />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -320,39 +376,107 @@ export default function ProjectDetailPage() {
           <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
             <Sparkles size={16} className="mr-2 text-blue-600" />
             AI Translation Suggestions
+            {process.env.GEMINI_API_KEY && (
+              <span className="ml-2 text-xs text-green-600">• Gemini Enabled</span>
+            )}
           </h3>
-          {entries.find((e) => e.id === selectedEntry)?.aiSuggestions ? (
+          
+          {aiTranslate.isPending ? (
+            <div className="text-center py-8">
+              <Loader2 size={32} className="mx-auto text-blue-600 animate-spin mb-3" />
+              <p className="text-sm text-gray-600">Đang gọi AI translation...</p>
+              <p className="text-xs text-gray-500 mt-1">Có thể mất 2-5 giây</p>
+            </div>
+          ) : entries.find((e) => e.id === selectedEntry)?.aiSuggestions ? (
             <div className="space-y-2">
               <div className="flex items-start space-x-3 p-3 bg-blue-50 rounded-lg">
                 <div className="flex-1">
-                  <p className="text-sm text-gray-900">
-                    {entries.find((e) => e.id === selectedEntry)?.aiSuggestions?.text || 'N/A'}
+                  <p className="text-sm text-gray-900 font-medium mb-1">
+                    {(entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.translation || 'N/A'}
                   </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Confidence: 95% • Source: Gemini Flash
+                  <p className="text-xs text-gray-500">
+                    Confidence: {Math.round(((entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.confidence || 0.85) * 100)}%
+                    • Source: Gemini Pro
+                    {(entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.cached && ' • Cached'}
                   </p>
+                  {(entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.reasoning && (
+                    <p className="text-xs text-gray-600 mt-2 italic">
+                      {(entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.reasoning}
+                    </p>
+                  )}
                 </div>
                 <button
                   onClick={() => {
                     const entry = entries.find((e) => e.id === selectedEntry)
-                    if (entry?.aiSuggestions?.text) {
-                      handleTranslationChange(selectedEntry, entry.aiSuggestions.text)
+                    const translation = (entry?.aiSuggestions as any)?.translation
+                    if (translation) {
+                      handleTranslationChange(selectedEntry, translation)
                     }
                   }}
-                  className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                  className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex-shrink-0"
                 >
                   Apply
                 </button>
               </div>
+              
+              {/* Alternative translations */}
+              {(entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.alternatives?.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-xs font-medium text-gray-700 mb-1">Các lựa chọn khác:</p>
+                  <div className="space-y-1">
+                    {((entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.alternatives || []).map((alt: string, i: number) => (
+                      <div key={i} className="flex items-center space-x-2 text-xs">
+                        <span className="text-gray-600">{i + 1}.</span>
+                        <span className="text-gray-900">{alt}</span>
+                        <button
+                          onClick={() => handleTranslationChange(selectedEntry, alt)}
+                          className="text-blue-600 hover:underline"
+                        >
+                          Use
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center py-4">
-              <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                Request AI Translation
+              <button
+                onClick={() => aiTranslate.mutate({ entryId: selectedEntry })}
+                disabled={aiTranslate.isPending}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center mx-auto"
+              >
+                {aiTranslate.isPending ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin mr-2" />
+                    Đang dịch...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={16} className="mr-2" />
+                    Request AI Translation
+                  </>
+                )}
               </button>
+              <p className="text-xs text-gray-500 mt-2">
+                Sử dụng Google Gemini (miễn phí)
+              </p>
             </div>
           )}
         </div>
+      )}
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <ImportModal
+          projectId={id!}
+          onClose={() => setShowImportModal(false)}
+          onSuccess={() => {
+            // Refresh entries after import
+            window.location.reload()
+          }}
+        />
       )}
     </div>
   )

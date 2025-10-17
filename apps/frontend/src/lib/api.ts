@@ -216,5 +216,48 @@ export const glossaryApi = {
   },
 }
 
+// ==================== AI Translation API ====================
+
+export const aiApi = {
+  // Translate single text
+  translate: async (data: {
+    text: string
+    sourceLang: string
+    targetLang: string
+    contextType?: string
+    projectId?: string
+    useGlossary?: boolean
+  }) => {
+    const response = await api.post('/ai/translate', data)
+    return response.data.data
+  },
+
+  // Batch translate
+  batchTranslate: async (data: {
+    texts: string[]
+    sourceLang: string
+    targetLang: string
+    projectId?: string
+    useGlossary?: boolean
+  }) => {
+    const response = await api.post('/ai/translate/batch', data)
+    return response.data.data
+  },
+
+  // Translate specific entry
+  translateEntry: async (entryId: string, useGlossary = true) => {
+    const response = await api.post(`/ai/translate/entry/${entryId}`, {
+      useGlossary,
+    })
+    return response.data.data
+  },
+
+  // Get AI capabilities
+  getCapabilities: async () => {
+    const response = await api.get('/ai/capabilities')
+    return response.data.data
+  },
+}
+
 // Export default api instance for custom requests
 export default api

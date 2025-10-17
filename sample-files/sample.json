@@ -1,0 +1,33 @@
+{
+  "dialogue": [
+    {
+      "id": 1,
+      "speaker": "hero",
+      "text": "Hello, brave adventurer!"
+    },
+    {
+      "id": 2,
+      "speaker": "npc",
+      "text": "Welcome to our village!"
+    },
+    {
+      "id": 3,
+      "speaker": "hero",
+      "text": "Thank you! I'm looking for the Dragon."
+    }
+  ],
+  "menu": {
+    "main": ["Start Game", "Load Game", "Settings", "Exit"],
+    "battle": ["Attack", "Defend", "Use Item", "Run"]
+  },
+  "items": {
+    "potion": "Health Potion",
+    "mana_potion": "Mana Potion",
+    "elixir": "Full Restore Elixir"
+  },
+  "quests": [
+    "Defeat 10 goblins",
+    "Find the ancient sword",
+    "Save the princess"
+  ]
+}

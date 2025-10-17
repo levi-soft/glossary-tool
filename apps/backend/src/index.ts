@@ -7,6 +7,9 @@ import { PrismaClient } from '@prisma/client';
 import projectsRouter from './routes/projects';
 import entriesRouter from './routes/entries';
 import glossaryRouter from './routes/glossary';
+import aiRouter from './routes/ai';
+import importRouter from './routes/import';
+import exportRouter from './routes/export';
 
 // Load environment variables
 dotenv.config();
@@ -46,6 +49,8 @@ app.get('/api', (req: Request, res: Response) => {
       entries: '/api/entries',
       glossary: '/api/glossary',
       ai: '/api/ai',
+      import: '/api/import',
+      export: '/api/export',
       auth: '/api/auth'
     }
   });
@@ -55,6 +60,9 @@ app.get('/api', (req: Request, res: Response) => {
 app.use('/api/projects', projectsRouter);
 app.use('/api/entries', entriesRouter);
 app.use('/api/glossary', glossaryRouter);
+app.use('/api/ai', aiRouter);
+app.use('/api/import', importRouter);
+app.use('/api/export', exportRouter);
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: any) => {

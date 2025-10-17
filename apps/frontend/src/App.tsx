@@ -7,8 +7,9 @@ import ProjectsPage from './pages/ProjectsPage'
 import ProjectDetailPage from './pages/ProjectDetailPage'
 import GlossaryPage from './pages/GlossaryPage'
 
-// Layout
+// Components
 import Layout from './components/Layout'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 // Create a client
 const queryClient = new QueryClient({
@@ -22,20 +23,22 @@ const queryClient = new QueryClient({
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Navigate to="/projects" replace />} />
-            <Route path="/projects" element={<ProjectsPage />} />
-            <Route path="/projects/:id" element={<ProjectDetailPage />} />
-            <Route path="/projects/:id/glossary" element={<GlossaryPage />} />
-            <Route path="*" element={<Navigate to="/projects" replace />} />
-          </Routes>
-        </Layout>
-      </BrowserRouter>
-      <Toaster position="top-right" />
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter>
+          <Layout>
+            <Routes>
+              <Route path="/" element={<Navigate to="/projects" replace />} />
+              <Route path="/projects" element={<ProjectsPage />} />
+              <Route path="/projects/:id" element={<ProjectDetailPage />} />
+              <Route path="/projects/:id/glossary" element={<GlossaryPage />} />
+              <Route path="*" element={<Navigate to="/projects" replace />} />
+            </Routes>
+          </Layout>
+        </BrowserRouter>
+        <Toaster position="top-right" />
+      </QueryClientProvider>
+    </ErrorBoundary>
   )
 }
 
