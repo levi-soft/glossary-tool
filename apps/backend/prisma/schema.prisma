@@ -1,0 +1,269 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  username  String   @unique
+  password  String
+  role      UserRole @default(TRANSLATOR)
+  
+  // Preferences stored as JSON
+  preferences Json?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  projects     Project[]
+  translations Translation[]
+  comments     Comment[]
+  
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  TRANSLATOR
+  REVIEWER
+  VIEWER
+}
+
+// Project model
+model Project {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  
+  // Game settings
+  gameFormat  String // json, renpy, rpgmaker, csv, xml
+  sourceLang  String @default("en")
+  targetLang  String @default("vi")
+  
+  // Metadata
+  metadata    Json?
+  
+  // Owner
+  ownerId     String
+  owner       User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  textEntries    TextEntry[]
+  glossaryTerms  GlossaryTerm[]
+  projectMembers ProjectMember[]
+  
+  @@map("projects")
+}
+
+// Project members for collaboration
+model ProjectMember {
+  id        String   @id @default(uuid())
+  projectId String
+  userId    String
+  role      UserRole @default(TRANSLATOR)
+  
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@unique([projectId, userId])
+  @@map("project_members")
+}
+
+// Text entry model
+model TextEntry {
+  id              String   @id @default(uuid())
+  projectId       String
+  
+  // Content
+  context         String? // dialogue, menu, item, etc.
+  originalText    String  @db.Text
+  currentTranslation String? @db.Text
+  
+  // AI suggestions stored as JSON array
+  aiSuggestions   Json?
+  
+  // Status tracking
+  status          EntryStatus @default(UNTRANSLATED)
+  
+  // Line number in original file
+  lineNumber      Int?
+  
+  // File info
+  sourceFile      String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  project         Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  translations    Translation[]
+  comments        Comment[]
+  glossaryMatches GlossaryMatch[]
+  
+  @@index([projectId])
+  @@index([status])
+  @@map("text_entries")
+}
+
+enum EntryStatus {
+  UNTRANSLATED
+  IN_PROGRESS
+  TRANSLATED
+  IN_REVIEW
+  NEEDS_REVISION
+  APPROVED
+}
+
+// Translation history
+model Translation {
+  id            String   @id @default(uuid())
+  textEntryId   String
+  userId        String
+  
+  // Translation content
+  translationText String @db.Text
+  
+  // Metadata
+  source        String // manual, ai-assisted, glossary, imported
+  confidenceScore Float?
+  
+  createdAt     DateTime @default(now())
+  
+  // Relations
+  textEntry     TextEntry @relation(fields: [textEntryId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id])
+  
+  @@index([textEntryId])
+  @@map("translations")
+}
+
+// Glossary term model
+model GlossaryTerm {
+  id          String   @id @default(uuid())
+  projectId   String
+  
+  // Terms
+  sourceTerm  String
+  targetTerm  String
+  
+  // Categorization
+  category    String?
+  
+  // Additional info
+  aliases     Json? // Array of alternative terms
+  description String?
+  
+  // Global vs project-specific
+  isGlobal    Boolean @default(false)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  project     Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  matches     GlossaryMatch[]
+  
+  @@index([projectId])
+  @@index([sourceTerm])
+  @@map("glossary_terms")
+}
+
+// Tracks which entries match which glossary terms
+model GlossaryMatch {
+  id              String   @id @default(uuid())
+  textEntryId     String
+  glossaryTermId  String
+  
+  // Auto-applied or manual
+  autoApplied     Boolean @default(true)
+  
+  createdAt       DateTime @default(now())
+  
+  textEntry       TextEntry    @relation(fields: [textEntryId], references: [id], onDelete: Cascade)
+  glossaryTerm    GlossaryTerm @relation(fields: [glossaryTermId], references: [id], onDelete: Cascade)
+  
+  @@unique([textEntryId, glossaryTermId])
+  @@map("glossary_matches")
+}
+
+// Comments for collaboration
+model Comment {
+  id          String   @id @default(uuid())
+  textEntryId String
+  userId      String
+  
+  content     String   @db.Text
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  textEntry   TextEntry @relation(fields: [textEntryId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id])
+  
+  @@index([textEntryId])
+  @@map("comments")
+}
+
+// AI Translation Cache
+model AICache {
+  id          String   @id @default(uuid())
+  
+  // Cache key (hash of request)
+  cacheKey    String   @unique
+  
+  // Request details
+  originalText String  @db.Text
+  context     Json?
+  service     String // gemini, openai, claude
+  
+  // Response
+  translation String  @db.Text
+  confidence  Float?
+  alternatives Json?
+  
+  // Cache metadata
+  hitCount    Int     @default(0)
+  
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+  
+  @@index([cacheKey])
+  @@index([expiresAt])
+  @@map("ai_cache")
+}
+
+// Import/Export history
+model ImportExport {
+  id          String   @id @default(uuid())
+  projectId   String
+  
+  type        String // import or export
+  format      String // json, csv, renpy, etc.
+  
+  fileName    String
+  fileSize    Int?
+  
+  // Results
+  status      String // success, failed, partial
+  entriesCount Int?
+  errorLog    Json?
+  
+  createdAt   DateTime @default(now())
+  
+  @@index([projectId])
+  @@map("import_export")
+}
