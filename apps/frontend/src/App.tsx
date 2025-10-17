@@ -1,44 +1,41 @@
-import { useState } from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { Toaster } from 'react-hot-toast'
+
+// Pages
+import ProjectsPage from './pages/ProjectsPage'
+import ProjectDetailPage from './pages/ProjectDetailPage'
+import GlossaryPage from './pages/GlossaryPage'
+
+// Layout
+import Layout from './components/Layout'
+
+// Create a client
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+})
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8">
-        <header className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            🎮 Glossary Tool
-          </h1>
-          <p className="text-gray-600">
-            Game Translation Tool with AI Support
-          </p>
-        </header>
-
-        <div className="max-w-md mx-auto bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-2xl font-semibold mb-4">Welcome!</h2>
-          <p className="text-gray-700 mb-4">
-            This is a placeholder. The full application will include:
-          </p>
-          <ul className="list-disc list-inside text-gray-600 space-y-2 mb-6">
-            <li>Project management</li>
-            <li>Sheet-like translation interface</li>
-            <li>Glossary management</li>
-            <li>AI translation suggestions</li>
-            <li>Team collaboration</li>
-          </ul>
-          
-          <div className="text-center">
-            <button
-              onClick={() => setCount((count) => count + 1)}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded transition-colors"
-            >
-              Count is {count}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<Navigate to="/projects" replace />} />
+            <Route path="/projects" element={<ProjectsPage />} />
+            <Route path="/projects/:id" element={<ProjectDetailPage />} />
+            <Route path="/projects/:id/glossary" element={<GlossaryPage />} />
+            <Route path="*" element={<Navigate to="/projects" replace />} />
+          </Routes>
+        </Layout>
+      </BrowserRouter>
+      <Toaster position="top-right" />
+    </QueryClientProvider>
   )
 }
 
