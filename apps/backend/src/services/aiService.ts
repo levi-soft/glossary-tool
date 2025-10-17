@@ -1,7 +1,31 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { mockAiService } from './mockAiService';
+import { openRouterService } from './openrouterService';
 
-// Initialize Gemini API
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+// Determine which AI service to use
+const USE_OPENROUTER = process.env.USE_OPENROUTER === 'true';
+const USE_GEMINI = process.env.USE_GEMINI === 'true';
+
+let genAI: GoogleGenerativeAI | null = null;
+let aiMode: 'openrouter' | 'gemini' | 'mock' = 'mock';
+
+// Priority: OpenRouter > Gemini > Mock
+if (USE_OPENROUTER && process.env.OPENROUTER_API_KEY) {
+  aiMode = 'openrouter';
+  console.log('🎯 Using OpenRouter AI');
+} else if (USE_GEMINI && process.env.GEMINI_API_KEY) {
+  try {
+    genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    aiMode = 'gemini';
+    console.log('🤖 Using Gemini AI');
+  } catch (error) {
+    console.warn('⚠️  Gemini init failed, using Mock AI');
+    aiMode = 'mock';
+  }
+} else {
+  console.log('🎭 Using Mock AI (No API keys configured)');
+  aiMode = 'mock';
+}
 
 interface TranslationContext {
   gameGenre?: string;
@@ -15,7 +39,8 @@ interface TranslationRequest {
   sourceLang: string;
   targetLang: string;
   context?: TranslationContext;
-  contextType?: string; // dialogue, menu, item, etc.
+  contextType?: string;
+  model?: string;
 }
 
 interface TranslationResponse {
@@ -23,49 +48,64 @@ interface TranslationResponse {
   confidence: number;
   alternatives?: string[];
   reasoning?: string;
+  model?: string;
+  cost?: number;
 }
 
 export class AIService {
   private model: any;
+  private mode: 'openrouter' | 'gemini' | 'mock';
 
   constructor() {
-    if (!process.env.GEMINI_API_KEY) {
-      console.warn('⚠️  GEMINI_API_KEY not set. AI translation will not work.');
+    this.mode = aiMode;
+    
+    if (this.mode === 'gemini') {
+      try {
+        this.model = genAI!.getGenerativeModel({ model: 'gemini-pro' });
+      } catch (error) {
+        console.warn('⚠️  Gemini model init failed, switching to Mock');
+        this.mode = 'mock';
+        this.model = null;
+      }
+    } else {
+      this.model = null;
     }
-    this.model = genAI.getGenerativeModel({ model: 'gemini-pro' });
   }
 
   /**
-   * Translate text using Gemini AI
+   * Translate text using configured AI service
    */
   async translate(request: TranslationRequest): Promise<TranslationResponse> {
+    // Route to appropriate AI service
+    switch (this.mode) {
+      case 'openrouter':
+        return openRouterService.translate(request);
+      
+      case 'gemini':
+        return this.translateWithGemini(request);
+      
+      case 'mock':
+      default:
+        return mockAiService.translate(request);
+    }
+  }
+
+  private async translateWithGemini(request: TranslationRequest): Promise<TranslationResponse> {
     try {
       const prompt = this.buildPrompt(request);
-      
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
       const text = response.text();
 
-      // Parse JSON response from AI
-      try {
-        const parsed = JSON.parse(text);
-        return {
-          translation: parsed.translation,
-          confidence: parsed.confidence || 0.85,
-          alternatives: parsed.alternatives || [],
-          reasoning: parsed.reasoning,
-        };
-      } catch {
-        // If AI doesn't return JSON, use text directly
-        return {
-          translation: text.trim(),
-          confidence: 0.8,
-          alternatives: [],
-        };
-      }
-    } catch (error) {
-      console.error('AI Translation Error:', error);
-      throw new Error('AI translation failed');
+      return {
+        translation: text.trim(),
+        confidence: 0.85,
+        alternatives: [],
+        reasoning: 'Translated by Gemini Pro',
+      };
+    } catch (error: any) {
+      console.error('❌ Gemini failed, using Mock AI');
+      return mockAiService.translate(request);
     }
   }
 
@@ -75,24 +115,15 @@ export class AIService {
   async batchTranslate(
     requests: TranslationRequest[]
   ): Promise<TranslationResponse[]> {
-    // Translate in parallel with rate limiting
-    const batchSize = 5; // Gemini allows ~60 req/min
-    const results: TranslationResponse[] = [];
-
-    for (let i = 0; i < requests.length; i += batchSize) {
-      const batch = requests.slice(i, i + batchSize);
-      const batchResults = await Promise.all(
-        batch.map((req) => this.translate(req))
-      );
-      results.push(...batchResults);
-
-      // Small delay to avoid rate limiting
-      if (i + batchSize < requests.length) {
-        await this.delay(1000); // 1 second delay between batches
-      }
+    switch (this.mode) {
+      case 'openrouter':
+        return openRouterService.batchTranslate(requests);
+      
+      case 'gemini':
+      case 'mock':
+      default:
+        return Promise.all(requests.map(req => this.translate(req)));
     }
-
-    return results;
   }
 
   /**
@@ -101,60 +132,34 @@ export class AIService {
   private buildPrompt(request: TranslationRequest): string {
     const { text, sourceLang, targetLang, context, contextType } = request;
 
-    let prompt = `You are a professional game translator specializing in translating from ${sourceLang} to ${targetLang}.
-
-**Task:** Translate the following game text accurately and naturally.
-
-`;
+    // Simplified prompt for better compatibility
+    let prompt = `Translate the following ${sourceLang} game text to ${targetLang}.\n\n`;
 
     // Add context if available
     if (contextType) {
-      prompt += `**Context Type:** ${contextType}\n`;
-    }
-
-    if (context?.gameGenre) {
-      prompt += `**Game Genre:** ${context.gameGenre}\n`;
-    }
-
-    if (context?.characterContext) {
-      prompt += `**Character/Speaker:** ${context.characterContext}\n`;
+      prompt += `Context: ${contextType}\n`;
     }
 
     // Add glossary terms
     if (context?.glossaryTerms && context.glossaryTerms.length > 0) {
-      prompt += `\n**Required Terminology (MUST USE):**\n`;
+      prompt += `\nRequired terms:\n`;
       context.glossaryTerms.forEach((term) => {
         prompt += `- "${term.source}" → "${term.target}"\n`;
       });
     }
 
-    // Add previous dialogue for context
-    if (context?.previousDialogue && context.previousDialogue.length > 0) {
-      prompt += `\n**Previous Dialogue:**\n`;
-      context.previousDialogue.forEach((line, i) => {
-        prompt += `${i + 1}. ${line}\n`;
+    // Add the text to translate
+    prompt += `\nText: "${text}"\n\n`;
+    prompt += `Translate to ${targetLang}. `;
+    
+    if (context?.glossaryTerms && context.glossaryTerms.length > 0) {
+      prompt += `Use these terms: `;
+      context.glossaryTerms.forEach((term) => {
+        prompt += `"${term.source}" → "${term.target}", `;
       });
     }
-
-    // Add the text to translate
-    prompt += `\n**Text to Translate:**
-"${text}"
-
-**Requirements:**
-1. Keep the same tone and style appropriate for the context type
-2. Use the provided glossary terms exactly as specified
-3. Maintain consistency with previous dialogue if provided
-4. Keep any special formatting (e.g., {placeholders}, variables)
-5. Sound natural in ${targetLang}
-
-**Output Format (JSON):**
-{
-  "translation": "your translation here",
-  "confidence": 0.95,
-  "alternatives": ["alternative 1", "alternative 2"],
-  "reasoning": "brief explanation of translation choices"
-}
-`;
+    
+    prompt += `\n\nProvide ONLY the translation, nothing else.`;
 
     return prompt;
   }
@@ -163,20 +168,35 @@ export class AIService {
    * Get AI model capabilities
    */
   getCapabilities() {
-    return {
-      provider: 'Google Gemini',
-      model: 'gemini-pro',
-      maxTokens: 30720,
-      rateLimit: '60 requests/minute',
-      cost: 'Free (with limits)',
-      features: [
-        'Context-aware translation',
-        'Glossary integration',
-        'Multiple alternatives',
-        'Confidence scoring',
-        'JSON output parsing',
-      ],
-    };
+    switch (this.mode) {
+      case 'openrouter':
+        return {
+          ...openRouterService.getCapabilities(),
+          currentMode: 'openrouter',
+        };
+      
+      case 'gemini':
+        return {
+          provider: 'Google Gemini',
+          model: 'gemini-pro',
+          currentMode: 'gemini',
+          maxTokens: 30720,
+          rateLimit: '60 requests/minute',
+          cost: 'Free',
+          features: [
+            'Context-aware translation',
+            'Glossary integration',
+            'Free tier',
+          ],
+        };
+      
+      case 'mock':
+      default:
+        return {
+          ...mockAiService.getCapabilities(),
+          currentMode: 'mock',
+        };
+    }
   }
 
   /**

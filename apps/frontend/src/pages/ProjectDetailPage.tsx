@@ -376,9 +376,6 @@ export default function ProjectDetailPage() {
           <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
             <Sparkles size={16} className="mr-2 text-blue-600" />
             AI Translation Suggestions
-            {process.env.GEMINI_API_KEY && (
-              <span className="ml-2 text-xs text-green-600">• Gemini Enabled</span>
-            )}
           </h3>
           
           {aiTranslate.isPending ? (
