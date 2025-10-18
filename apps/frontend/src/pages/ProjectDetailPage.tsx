@@ -330,8 +330,11 @@ export default function ProjectDetailPage() {
           <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-bold">Keyboard Shortcuts</h3>
-              <button onClick={() => setShowShortcutsInfo(false)}>
-                <X size={20} />
+              <button
+                onClick={() => setShowShortcutsInfo(false)}
+                className="p-2 hover:bg-gray-200 rounded-lg bg-gray-100"
+              >
+                <X size={20} className="text-gray-900" />
               </button>
             </div>
             <div className="space-y-2">
@@ -649,9 +652,9 @@ export default function ProjectDetailPage() {
                   setShowAIModal(false)
                   setAIModalEntry(null)
                 }}
-                className="p-1 hover:bg-gray-100 rounded"
+                className="p-2 hover:bg-gray-200 rounded-lg bg-gray-100"
               >
-                <X size={20} />
+                <X size={20} className="text-gray-900" />
               </button>
             </div>
 
@@ -763,9 +766,9 @@ export default function ProjectDetailPage() {
                   setShowCommentsPanel(false)
                   setCommentsEntry(null)
                 }}
-                className="p-1 hover:bg-gray-100 rounded"
+                className="p-2 hover:bg-gray-200 rounded-lg bg-gray-100"
               >
-                <X size={20} />
+                <X size={20} className="text-gray-900" />
               </button>
             </div>
             <div className="flex-1">

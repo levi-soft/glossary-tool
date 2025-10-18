@@ -92,10 +92,10 @@ export default function ImportModal({ projectId, onClose, onSuccess }: ImportMod
           <h2 className="text-2xl font-bold">Import Game File</h2>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-gray-100 rounded transition-colors"
+            className="p-2 hover:bg-gray-200 rounded-lg bg-gray-100"
             disabled={uploading}
           >
-            <X size={24} />
+            <X size={24} className="text-gray-900" />
           </button>
         </div>
 

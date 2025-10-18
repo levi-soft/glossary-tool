@@ -568,9 +568,9 @@ export default function GlossaryPage() {
               </div>
               <button
                 onClick={() => setShowExtractModal(false)}
-                className="p-1 hover:bg-gray-100 rounded"
+                className="p-2 hover:bg-gray-200 rounded-lg bg-gray-100"
               >
-                <X size={24} />
+                <X size={24} className="text-gray-900" />
               </button>
             </div>
 
@@ -632,7 +632,7 @@ export default function GlossaryPage() {
               </p>
               <button
                 onClick={() => setShowExtractModal(false)}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="px-4 py-2 bg-white text-gray-900 border-2 border-gray-400 rounded-lg hover:bg-gray-50 font-medium"
               >
                 Đóng
               </button>
