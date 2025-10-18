@@ -10,6 +10,7 @@ import {
   Filter,
   Loader2,
   FolderOpen,
+  X,
 } from 'lucide-react'
 import { useProject, useEntries, useUpdateEntry, useAITranslateEntry } from '@/lib/hooks'
 import { EntryStatus } from '@/lib/types'
@@ -32,6 +33,8 @@ export default function ProjectDetailPage() {
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [showImportModal, setShowImportModal] = useState(false)
+  const [showAIModal, setShowAIModal] = useState(false)
+  const [aiModalEntry, setAIModalEntry] = useState<any>(null)
   const [exporting, setExporting] = useState(false)
   const [selectedEntries, setSelectedEntries] = useState<Set<string>>(new Set())
   const [batchTranslating, setBatchTranslating] = useState(false)
@@ -194,14 +197,14 @@ export default function ProjectDetailPage() {
         <div className="flex space-x-2">
           <Link
             to={`/projects/${id}/glossary`}
-            className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            className="flex items-center space-x-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
           >
             <BookOpen size={18} />
             <span>Glossary</span>
           </Link>
           <button
             onClick={() => setShowImportModal(true)}
-            className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+            className="flex items-center space-x-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
           >
             <Upload size={18} />
             <span>Import</span>
@@ -421,22 +424,22 @@ export default function ProjectDetailPage() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setAIModalEntry(entry)
+                            setShowAIModal(true)
+                          }}
                           className={`p-1 rounded transition-colors ${
                             entry.aiSuggestions
                               ? 'hover:bg-blue-100 text-blue-600'
-                              : 'hover:bg-gray-100 text-gray-400'
+                              : 'hover:bg-gray-100 text-blue-600'
                           }`}
-                          title={
-                            entry.aiSuggestions
-                              ? 'AI Suggestion có sẵn - Click để xem'
-                              : 'Click để request AI translation'
-                          }
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setSelectedEntry(entry.id)
-                          }}
+                          title={entry.aiSuggestions ? 'View AI suggestion' : 'Request AI translation'}
                         >
-                          <Sparkles size={16} />
+                          <Sparkles
+                            size={16}
+                            className={entry.aiSuggestions ? 'fill-blue-600' : ''}
+                          />
                         </button>
                       </td>
                     </tr>
@@ -471,106 +474,110 @@ export default function ProjectDetailPage() {
         </>
       )}
 
-      {/* AI Suggestion Panel (when entry selected) */}
-      {selectedEntry && entries.find((e) => e.id === selectedEntry) && (
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <h3 className="text-sm font-medium text-gray-900 mb-3 flex items-center">
-            <Sparkles size={16} className="mr-2 text-blue-600" />
-            AI Translation Suggestions
-          </h3>
-          
-          {aiTranslate.isPending ? (
-            <div className="text-center py-8">
-              <Loader2 size={32} className="mx-auto text-blue-600 animate-spin mb-3" />
-              <p className="text-sm text-gray-600">Đang gọi AI translation...</p>
-              <p className="text-xs text-gray-500 mt-1">Có thể mất 2-5 giây</p>
+      {/* AI Modal Popup */}
+      {showAIModal && aiModalEntry && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 flex items-center">
+                  <Sparkles size={20} className="mr-2 text-blue-600" />
+                  AI Translation
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  Original: {aiModalEntry.originalText}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowAIModal(false)
+                  setAIModalEntry(null)
+                }}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <X size={20} />
+              </button>
             </div>
-          ) : entries.find((e) => e.id === selectedEntry)?.aiSuggestions ? (
-            <div className="space-y-2">
-              <div className="flex items-start space-x-3 p-3 bg-blue-50 rounded-lg">
-                <div className="flex-1">
-                  <p className="text-sm text-gray-900 font-medium mb-1">
-                    {(entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.translation || 'N/A'}
+
+            {aiTranslate.isPending ? (
+              <div className="text-center py-8">
+                <Loader2 size={40} className="mx-auto text-blue-600 animate-spin mb-3" />
+                <p className="text-sm text-gray-600">Đang gọi AI translation...</p>
+              </div>
+            ) : aiModalEntry.aiSuggestions ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-blue-50 rounded-lg">
+                  <p className="text-sm font-medium text-gray-900 mb-2">
+                    {(aiModalEntry.aiSuggestions as any)?.translation || 'N/A'}
                   </p>
-                  <p className="text-xs text-gray-500">
-                    Confidence: {Math.round(((entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.confidence || 0.85) * 100)}%
-                    • Model: {(entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.model || 'AI'}
-                    {(entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.cached && ' • Cached'}
+                  <p className="text-xs text-gray-600">
+                    Confidence: {Math.round(((aiModalEntry.aiSuggestions as any)?.confidence || 0.85) * 100)}%
+                    • Model: {(aiModalEntry.aiSuggestions as any)?.model || 'AI'}
                   </p>
-                  {(entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.reasoning && (
+                  {(aiModalEntry.aiSuggestions as any)?.reasoning && (
                     <p className="text-xs text-gray-600 mt-2 italic">
-                      {(entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.reasoning}
+                      {(aiModalEntry.aiSuggestions as any)?.reasoning}
                     </p>
                   )}
                 </div>
-                <div className="flex flex-col space-y-1">
+
+                <div className="flex space-x-2">
                   <button
                     onClick={async () => {
-                      const entry = entries.find((e) => e.id === selectedEntry)
-                      const translation = (entry?.aiSuggestions as any)?.translation
+                      const translation = (aiModalEntry.aiSuggestions as any)?.translation
                       if (translation) {
-                        await handleTranslationChange(selectedEntry, translation)
+                        await handleTranslationChange(aiModalEntry.id, translation)
+                        setShowAIModal(false)
                       }
                     }}
-                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex-shrink-0"
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                   >
-                    Apply
+                    Apply Translation
                   </button>
                   <button
-                    onClick={() => aiTranslate.mutate({ entryId: selectedEntry })}
-                    disabled={aiTranslate.isPending}
-                    className="px-3 py-1 text-xs border border-blue-600 text-blue-600 rounded hover:bg-blue-50 flex-shrink-0 disabled:opacity-50"
+                    onClick={() => aiTranslate.mutate({ entryId: aiModalEntry.id })}
+                    className="px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50"
                   >
                     Re-request
                   </button>
                 </div>
-              </div>
-              
-              {/* Alternative translations */}
-              {(entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.alternatives?.length > 0 && (
-                <div className="mt-2">
-                  <p className="text-xs font-medium text-gray-700 mb-1">Các lựa chọn khác:</p>
-                  <div className="space-y-1">
-                    {((entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.alternatives || []).map((alt: string, i: number) => (
-                      <div key={i} className="flex items-center space-x-2 text-xs">
-                        <span className="text-gray-600">{i + 1}.</span>
-                        <span className="text-gray-900">{alt}</span>
-                        <button
-                          onClick={() => handleTranslationChange(selectedEntry, alt)}
-                          className="text-blue-600 hover:underline"
-                        >
-                          Use
-                        </button>
-                      </div>
-                    ))}
+
+                {/* Alternatives */}
+                {(aiModalEntry.aiSuggestions as any)?.alternatives?.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 mb-2">Alternatives:</p>
+                    <div className="space-y-2">
+                      {((aiModalEntry.aiSuggestions as any)?.alternatives || []).map((alt: string, i: number) => (
+                        <div key={i} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                          <span className="text-sm text-gray-900">{alt}</span>
+                          <button
+                            onClick={async () => {
+                              await handleTranslationChange(aiModalEntry.id, alt)
+                              setShowAIModal(false)
+                            }}
+                            className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                          >
+                            Use
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="text-center py-4">
-              <button
-                onClick={() => aiTranslate.mutate({ entryId: selectedEntry })}
-                disabled={aiTranslate.isPending}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center mx-auto"
-              >
-                {aiTranslate.isPending ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin mr-2" />
-                    Đang dịch...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={16} className="mr-2" />
-                    Request AI Translation
-                  </>
                 )}
-              </button>
-              <p className="text-xs text-gray-500 mt-2">
-                AI translation service available
-              </p>
-            </div>
-          )}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <button
+                  onClick={() => aiTranslate.mutate({ entryId: aiModalEntry.id })}
+                  disabled={aiTranslate.isPending}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                >
+                  <Sparkles size={18} className="inline mr-2" />
+                  Request AI Translation
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

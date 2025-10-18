@@ -179,7 +179,7 @@ router.post('/translate/batch', async (req: Request, res: Response) => {
 router.post('/translate/entry/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { useGlossary = true } = req.body;
+    const { useGlossary = true, forceRefresh = false } = req.body;
 
     // Fetch the entry
     const entry = await prisma.textEntry.findUnique({
@@ -202,31 +202,7 @@ router.post('/translate/entry/:id', async (req: Request, res: Response) => {
       });
     }
 
-    // Generate cache key
-    const cacheKey = generateCacheKey({
-      text: entry.originalText,
-      sourceLang: entry.project.sourceLang,
-      targetLang: entry.project.targetLang,
-      contextType: entry.context,
-      projectId: entry.project.id,
-    });
-
-    // Check cache
-    const cached = await checkCache(cacheKey);
-    if (cached) {
-      // Update entry with AI suggestion
-      await prisma.textEntry.update({
-        where: { id },
-        data: { aiSuggestions: cached },
-      });
-
-      return res.json({
-        success: true,
-        data: { ...cached, cached: true },
-      });
-    }
-
-    // Fetch glossary if needed
+    // ALWAYS fetch glossary FIRST to get latest terms
     let glossaryTerms: Array<{ source: string; target: string }> = [];
     if (useGlossary) {
       const terms = await prisma.glossaryTerm.findMany({
@@ -240,9 +216,39 @@ router.post('/translate/entry/:id', async (req: Request, res: Response) => {
         source: t.sourceTerm,
         target: t.targetTerm,
       }));
+      
+      console.log(`📚 Fetched ${glossaryTerms.length} glossary terms for translation`);
     }
 
-    // Translate
+    // Generate cache key INCLUDING glossary to ensure cache invalidation when glossary changes
+    const cacheKey = generateCacheKey({
+      text: entry.originalText,
+      sourceLang: entry.project.sourceLang,
+      targetLang: entry.project.targetLang,
+      contextType: entry.context,
+      projectId: entry.project.id,
+      glossaryHash: JSON.stringify(glossaryTerms), // Include glossary in cache key!
+    });
+
+    // Check cache ONLY if not forcing refresh
+    if (!forceRefresh) {
+      const cached = await checkCache(cacheKey);
+      if (cached) {
+        console.log('✅ Using cached translation');
+        await prisma.textEntry.update({
+          where: { id },
+          data: { aiSuggestions: cached },
+        });
+
+        return res.json({
+          success: true,
+          data: { ...cached, cached: true },
+        });
+      }
+    }
+
+    // Translate with glossary
+    console.log('🤖 Requesting new AI translation with glossary...');
     const result = await aiService.translate({
       text: entry.originalText,
       sourceLang: entry.project.sourceLang,
@@ -294,6 +300,7 @@ function generateCacheKey(params: {
   targetLang: string;
   contextType?: string;
   projectId?: string;
+  glossaryHash?: string;
 }): string {
   const str = JSON.stringify(params);
   return crypto.createHash('sha256').update(str).digest('hex');

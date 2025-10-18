@@ -51,13 +51,13 @@ export class TermExtractor {
     const translatedEntries = entries.filter(e => e.currentTranslation);
 
     for (const entry of translatedEntries) {
-      // Extract potential terms using various patterns
+      // Extract potential terms from source
       const sourceTerms = this.extractTerms(entry.originalText);
-      const targetTerms = this.extractTerms(entry.currentTranslation!);
 
-      // Try to match source and target terms
+      // For each source term, find corresponding target in FULL translation
       for (const sourceTerm of sourceTerms) {
-        for (const targetTerm of targetTerms) {
+        // If source term appears in original, use full translation as target
+        if (entry.originalText.includes(sourceTerm)) {
           const key = sourceTerm.toLowerCase();
           
           if (!termMap.has(key)) {
@@ -65,7 +65,7 @@ export class TermExtractor {
           }
 
           termMap.get(key)!.push({
-            target: targetTerm,
+            target: entry.currentTranslation!, // Use FULL translation
             context: entry.context,
             examples: [{
               original: entry.originalText,

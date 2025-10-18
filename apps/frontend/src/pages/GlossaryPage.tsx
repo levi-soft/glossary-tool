@@ -5,6 +5,7 @@ import {
   useGlossary,
   useGlossaryCategories,
   useCreateGlossaryTerm,
+  useUpdateGlossaryTerm,
   useDeleteGlossaryTerm
 } from '@/lib/hooks'
 import axios from 'axios'
@@ -14,9 +15,11 @@ export default function GlossaryPage() {
   const { id } = useParams()
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
   const [showExtractModal, setShowExtractModal] = useState(false)
   const [extracting, setExtracting] = useState(false)
   const [extractedTerms, setExtractedTerms] = useState<any[]>([])
+  const [editingTerm, setEditingTerm] = useState<any>(null)
   const [formData, setFormData] = useState({
     sourceTerm: '',
     targetTerm: '',
@@ -29,6 +32,7 @@ export default function GlossaryPage() {
   const { data: glossary, isLoading, error } = useGlossary({ projectId: id!, search: searchQuery })
   const { data: categories = [] } = useGlossaryCategories(id)
   const createTerm = useCreateGlossaryTerm()
+  const updateTerm = useUpdateGlossaryTerm()
   const deleteTerm = useDeleteGlossaryTerm()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -74,14 +78,60 @@ export default function GlossaryPage() {
         autoApprove: false,
       })
       
-      setExtractedTerms(response.data.data.extracted || [])
+      // Filter out terms that already exist in glossary
+      const existingSourceTerms = new Set(
+        glossary?.map(t => t.sourceTerm.toLowerCase()) || []
+      )
+      
+      const newTerms = (response.data.data.extracted || []).filter(
+        (term: any) => !existingSourceTerms.has(term.sourceTerm.toLowerCase())
+      )
+      
+      setExtractedTerms(newTerms)
       setShowExtractModal(true)
       
-      toast.success(`Phát hiện ${response.data.data.extracted.length} thuật ngữ!`)
+      if (newTerms.length === 0) {
+        toast('Không có thuật ngữ mới. Tất cả đã có trong glossary!', { icon: 'ℹ️' })
+      } else {
+        toast.success(`Phát hiện ${newTerms.length} thuật ngữ mới!`)
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Lỗi khi auto-extract')
     } finally {
       setExtracting(false)
+    }
+  }
+
+  const handleEdit = (term: any) => {
+    setEditingTerm(term)
+    setFormData({
+      sourceTerm: term.sourceTerm,
+      targetTerm: term.targetTerm,
+      category: term.category || '',
+      description: term.description || '',
+      autoApply: true,
+    })
+    setShowEditModal(true)
+  }
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    try {
+      await updateTerm.mutateAsync({
+        id: editingTerm.id,
+        data: {
+          sourceTerm: formData.sourceTerm,
+          targetTerm: formData.targetTerm,
+          category: formData.category || undefined,
+          description: formData.description || undefined,
+        },
+      })
+      
+      setShowEditModal(false)
+      setEditingTerm(null)
+    } catch (error) {
+      // Error handled by hook
     }
   }
 
@@ -230,10 +280,10 @@ export default function GlossaryPage() {
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '200px' }}>
                     Thuật ngữ gốc
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '200px' }}>
                     Bản dịch
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
@@ -253,11 +303,11 @@ export default function GlossaryPage() {
               <tbody className="divide-y divide-gray-200">
                 {glossary.map((term) => (
                   <tr key={term.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                      {term.sourceTerm}
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900" style={{ minWidth: '200px' }}>
+                      <div className="max-w-xs break-words">{term.sourceTerm}</div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">
-                      {term.targetTerm}
+                    <td className="px-4 py-3 text-sm text-gray-900" style={{ minWidth: '200px' }}>
+                      <div className="max-w-xs break-words">{term.targetTerm}</div>
                     </td>
                     <td className="px-4 py-3">
                       {term.category && (
@@ -274,7 +324,10 @@ export default function GlossaryPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end space-x-2">
-                        <button className="p-1 hover:bg-blue-100 rounded transition-colors">
+                        <button
+                          onClick={() => handleEdit(term)}
+                          className="p-1 hover:bg-blue-100 rounded transition-colors"
+                        >
                           <Edit2 size={16} className="text-blue-600" />
                         </button>
                         <button
@@ -404,6 +457,104 @@ export default function GlossaryPage() {
         </div>
       )}
 
+      {/* Edit Term Modal */}
+      {showEditModal && editingTerm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h2 className="text-2xl font-bold mb-4">Chỉnh Sửa Thuật Ngữ</h2>
+            <form onSubmit={handleUpdate} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Thuật ngữ gốc
+                </label>
+                <input
+                  type="text"
+                  value={formData.sourceTerm}
+                  onChange={(e) => setFormData({ ...formData, sourceTerm: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Bản dịch
+                </label>
+                <input
+                  type="text"
+                  value={formData.targetTerm}
+                  onChange={(e) => setFormData({ ...formData, targetTerm: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Danh mục
+                </label>
+                <select
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Chọn danh mục...</option>
+                  {uniqueCategories.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                  <option value="Items">Items</option>
+                  <option value="Monsters">Monsters</option>
+                  <option value="Game Terms">Game Terms</option>
+                  <option value="Story">Story</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Mô tả (tùy chọn)
+                </label>
+                <textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditModal(false)
+                    setEditingTerm(null)
+                  }}
+                  disabled={updateTerm.isPending}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={updateTerm.isPending}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center"
+                >
+                  {updateTerm.isPending ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin mr-2" />
+                      Đang cập nhật...
+                    </>
+                  ) : (
+                    'Cập Nhật'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Auto-Extract Results Modal */}
       {showExtractModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -432,19 +583,19 @@ export default function GlossaryPage() {
                 <table className="w-full">
                   <thead className="bg-gray-50 sticky top-0">
                     <tr>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Original</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Translation</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Category</th>
-                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Occurrences</th>
-                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Confidence</th>
-                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Action</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Original</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Translation</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
+                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Occurrences</th>
+                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Confidence</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y">
+                  <tbody className="divide-y divide-gray-200 bg-white">
                     {extractedTerms.map((term, idx) => (
                       <tr key={idx} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm font-medium">{term.sourceTerm}</td>
-                        <td className="px-4 py-3 text-sm">{term.targetTerm}</td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{term.sourceTerm}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{term.targetTerm}</td>
                         <td className="px-4 py-3">
                           <span className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded">
                             {term.category}
