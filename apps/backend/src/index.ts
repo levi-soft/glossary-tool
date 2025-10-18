@@ -10,6 +10,9 @@ import glossaryRouter from './routes/glossary';
 import aiRouter from './routes/ai';
 import importRouter from './routes/import';
 import exportRouter from './routes/export';
+import commentsRouter from './routes/comments';
+import analyticsRouter from './routes/analytics';
+import authRouter from './routes/auth';
 
 // Load environment variables
 dotenv.config();
@@ -51,7 +54,9 @@ app.get('/api', (req: Request, res: Response) => {
       ai: '/api/ai',
       import: '/api/import',
       export: '/api/export',
-      auth: '/api/auth'
+      comments: '/api/comments',
+      analytics: '/api/analytics',
+      auth: '/api/auth' // Login, register, me
     }
   });
 });
@@ -63,6 +68,9 @@ app.use('/api/glossary', glossaryRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/import', importRouter);
 app.use('/api/export', exportRouter);
+app.use('/api/comments', commentsRouter);
+app.use('/api/analytics', analyticsRouter);
+app.use('/api/auth', authRouter);
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: any) => {

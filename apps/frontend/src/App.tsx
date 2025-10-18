@@ -3,9 +3,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
 
 // Pages
+import LoginPage from './pages/LoginPage'
 import ProjectsPage from './pages/ProjectsPage'
 import ProjectDetailPage from './pages/ProjectDetailPage'
 import GlossaryPage from './pages/GlossaryPage'
+import DashboardPage from './pages/DashboardPage'
 
 // Components
 import Layout from './components/Layout'
@@ -28,10 +30,12 @@ function App() {
         <BrowserRouter>
           <Layout>
             <Routes>
+              <Route path="/login" element={<LoginPage />} />
               <Route path="/" element={<Navigate to="/projects" replace />} />
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/projects/:id" element={<ProjectDetailPage />} />
               <Route path="/projects/:id/glossary" element={<GlossaryPage />} />
+              <Route path="/projects/:id/analytics" element={<DashboardPage />} />
               <Route path="*" element={<Navigate to="/projects" replace />} />
             </Routes>
           </Layout>

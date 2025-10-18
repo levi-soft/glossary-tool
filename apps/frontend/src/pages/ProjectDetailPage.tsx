@@ -12,10 +12,12 @@ import {
   FolderOpen,
   X,
   Keyboard,
+  MessageCircle,
 } from 'lucide-react'
 import { useProject, useEntries, useUpdateEntry, useAITranslateEntry } from '@/lib/hooks'
 import { EntryStatus } from '@/lib/types'
 import ImportModal from '@/components/ImportModal'
+import CommentsPanel from '@/components/CommentsPanel'
 import { useKeyboardShortcuts, SHORTCUTS_INFO } from '@/hooks/useKeyboardShortcuts'
 import toast from 'react-hot-toast'
 
@@ -37,7 +39,9 @@ export default function ProjectDetailPage() {
   const [showImportModal, setShowImportModal] = useState(false)
   const [showAIModal, setShowAIModal] = useState(false)
   const [showShortcutsInfo, setShowShortcutsInfo] = useState(false)
+  const [showCommentsPanel, setShowCommentsPanel] = useState(false)
   const [aiModalEntry, setAIModalEntry] = useState<any>(null)
+  const [commentsEntry, setCommentsEntry] = useState<any>(null)
   const [exporting, setExporting] = useState(false)
   const [selectedEntries, setSelectedEntries] = useState<Set<string>>(new Set())
   const [batchTranslating, setBatchTranslating] = useState(false)
@@ -484,8 +488,11 @@ export default function ProjectDetailPage() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
                       Status
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
                       AI
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
+                      💬
                     </th>
                   </tr>
                 </thead>
@@ -576,6 +583,19 @@ export default function ProjectDetailPage() {
                             size={16}
                             className={entry.aiSuggestions ? 'fill-blue-600' : ''}
                           />
+                        </button>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setCommentsEntry(entry)
+                            setShowCommentsPanel(true)
+                          }}
+                          className="p-1 rounded transition-colors hover:bg-gray-100 text-gray-600"
+                          title="View comments"
+                        >
+                          <MessageCircle size={16} />
                         </button>
                       </td>
                     </tr>
@@ -727,6 +747,32 @@ export default function ProjectDetailPage() {
             window.location.reload()
           }}
         />
+      )}
+
+      {/* Comments Panel */}
+      {showCommentsPanel && commentsEntry && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full mx-4 h-[600px] flex flex-col">
+            <div className="p-4 border-b flex justify-between items-center">
+              <h3 className="text-lg font-bold flex items-center">
+                <MessageCircle size={20} className="mr-2 text-blue-600" />
+                Comments - {commentsEntry.originalText.substring(0, 50)}...
+              </h3>
+              <button
+                onClick={() => {
+                  setShowCommentsPanel(false)
+                  setCommentsEntry(null)
+                }}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex-1">
+              <CommentsPanel entryId={commentsEntry.id} />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

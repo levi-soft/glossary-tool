@@ -258,6 +258,43 @@ export const aiApi = {
     return response.data.data
   },
 }
+// ==================== Comments API ====================
+
+export const commentsApi = {
+  // Get comments for entry
+  getAll: async (textEntryId: string) => {
+    const response = await api.get<ApiResponse<any[]>>('/comments', {
+      params: { textEntryId },
+    })
+    return response.data.data
+  },
+
+  // Create comment
+  create: async (data: { textEntryId: string; content: string; userId?: string }) => {
+    const response = await api.post<ApiResponse<any>>('/comments', data)
+    return response.data.data
+  },
+
+  // Update comment
+  update: async (id: string, content: string) => {
+    const response = await api.put<ApiResponse<any>>(`/comments/${id}`, { content })
+    return response.data.data
+  },
+
+  // Delete comment
+  delete: async (id: string) => {
+    await api.delete(`/comments/${id}`)
+  },
+
+  // Get comment count
+  getCount: async (textEntryId: string) => {
+    const response = await api.get<ApiResponse<{ count: number }>>(
+      `/comments/count/${textEntryId}`
+    )
+    return response.data.data.count
+  },
+}
+
 
 // Export default api instance for custom requests
 export default api

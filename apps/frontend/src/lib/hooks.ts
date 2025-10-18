@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { projectsApi, entriesApi, glossaryApi, aiApi } from './api'
+import { projectsApi, entriesApi, glossaryApi, aiApi, commentsApi } from './api'
 import type {
   CreateProjectDto,
   UpdateProjectDto,
@@ -356,6 +356,47 @@ export function useBulkImportGlossary() {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Lỗi khi import glossary')
+    },
+  })
+}
+
+// ==================== Comments Hooks ====================
+
+export function useComments(textEntryId: string | undefined) {
+  return useQuery({
+    queryKey: ['comments', textEntryId],
+    queryFn: () => commentsApi.getAll(textEntryId!),
+    enabled: !!textEntryId,
+  })
+}
+
+export function useCreateComment() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: { textEntryId: string; content: string }) =>
+      commentsApi.create(data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['comments', variables.textEntryId] })
+      toast.success('Đã thêm comment!')
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Lỗi khi thêm comment')
+    },
+  })
+}
+
+export function useDeleteComment() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (id: string) => commentsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['comments'] })
+      toast.success('Đã xóa comment!')
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Lỗi khi xóa comment')
     },
   })
 }
