@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { PlusCircle, FolderOpen, Languages, Calendar, Loader2 } from 'lucide-react'
-import { useProjects, useCreateProject } from '@/lib/hooks'
+import { PlusCircle, FolderOpen, Languages, Calendar, Loader2, Trash2 } from 'lucide-react'
+import { useProjects, useCreateProject, useDeleteProject } from '@/lib/hooks'
 
 export default function ProjectsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -16,6 +16,7 @@ export default function ProjectsPage() {
   // Fetch projects from API
   const { data: projects, isLoading, error } = useProjects()
   const createProject = useCreateProject()
+  const deleteProject = useDeleteProject()
 
   const getProgress = (translated: number, total: number) => {
     return total > 0 ? Math.round((translated / total) * 100) : 0
@@ -27,7 +28,7 @@ export default function ProjectsPage() {
     try {
       await createProject.mutateAsync({
         ...formData,
-        ownerId: 'default-user', // TODO: Get from auth
+        ownerId: 'default-user',
       })
       
       // Reset form and close modal
@@ -102,12 +103,31 @@ export default function ProjectsPage() {
       {!isLoading && !error && projects && projects.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {projects.map((project) => (
-            <Link
+            <div
               key={project.id}
-              to={`/projects/${project.id}`}
-              className="block bg-white rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
+              className="bg-white rounded-lg shadow hover:shadow-md transition-shadow border border-gray-200"
             >
               <div className="p-6">
+                {/* Delete Button */}
+                <div className="flex justify-end mb-2">
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      if (window.confirm(`Xóa project "${project.name}"?`)) {
+                        deleteProject.mutate(project.id)
+                      }
+                    }}
+                    className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                    title="Xóa project"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+
+                <Link
+                  to={`/projects/${project.id}`}
+                  className="block"
+                >
                 {/* Project Header */}
                 <div className="flex items-start justify-between mb-3">
                   <h3 className="text-lg font-semibold text-gray-900">
@@ -160,10 +180,11 @@ export default function ProjectsPage() {
                 {/* Date */}
                 <div className="flex items-center text-xs text-gray-500">
                   <Calendar size={14} className="mr-1" />
-                  <span>Tạo: {new Date(project.createdAt).toLocaleDateString('vi-VN')}</span>
-                </div>
+                    <span>Tạo: {new Date(project.createdAt).toLocaleDateString('vi-VN')}</span>
+                  </div>
+                </Link>
               </div>
-            </Link>
+            </div>
           ))}
         </div>
       )}
@@ -255,7 +276,7 @@ export default function ProjectsPage() {
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                  className="flex-1 px-4 py-2 bg-white text-gray-900 border-2 border-gray-400 rounded-md hover:bg-gray-50 font-medium"
                 >
                   Hủy
                 </button>

@@ -290,14 +290,14 @@ export default function ProjectDetailPage() {
         <div className="flex space-x-2">
           <Link
             to={`/projects/${id}/glossary`}
-            className="flex items-center space-x-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            className="flex items-center space-x-2 px-4 py-2 bg-white text-gray-900 border-2 border-gray-400 rounded-lg hover:bg-gray-50 font-medium"
           >
             <BookOpen size={18} />
             <span>Glossary</span>
           </Link>
           <button
             onClick={() => setShowImportModal(true)}
-            className="flex items-center space-x-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            className="flex items-center space-x-2 px-4 py-2 bg-white text-gray-900 border-2 border-gray-400 rounded-lg hover:bg-gray-50 font-medium"
           >
             <Upload size={18} />
             <span>Import</span>
@@ -316,7 +316,7 @@ export default function ProjectDetailPage() {
           </button>
           <button
             onClick={() => setShowShortcutsInfo(true)}
-            className="flex items-center space-x-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            className="flex items-center space-x-2 px-4 py-2 bg-white text-gray-900 border-2 border-gray-400 rounded-lg hover:bg-gray-50 font-medium"
             title="Keyboard Shortcuts"
           >
             <Keyboard size={18} />
@@ -375,7 +375,7 @@ export default function ProjectDetailPage() {
               </button>
               <button
                 onClick={() => setSelectedEntries(new Set())}
-                className="px-4 py-1.5 border border-gray-300 text-sm rounded hover:bg-gray-50"
+                className="px-4 py-1.5 bg-white text-gray-900 border-2 border-gray-400 text-sm rounded hover:bg-gray-50 font-medium"
               >
                 Bỏ chọn
               </button>
@@ -592,7 +592,7 @@ export default function ProjectDetailPage() {
                             setCommentsEntry(entry)
                             setShowCommentsPanel(true)
                           }}
-                          className="p-1 rounded transition-colors hover:bg-gray-100 text-gray-600"
+                          className="p-1 rounded transition-colors hover:bg-blue-100 text-blue-600"
                           title="View comments"
                         >
                           <MessageCircle size={16} />
@@ -611,17 +611,17 @@ export default function ProjectDetailPage() {
               <button
                 onClick={() => setPage(page - 1)}
                 disabled={page === 1}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-white text-gray-900 border-2 border-gray-400 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
               >
                 Trước
               </button>
-              <span className="text-sm text-gray-600">
+              <span className="text-sm text-gray-900 font-medium">
                 Trang {page} / {pagination.totalPages}
               </span>
               <button
                 onClick={() => setPage(page + 1)}
                 disabled={page === pagination.totalPages}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-white text-gray-900 border-2 border-gray-400 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
               >
                 Sau
               </button>

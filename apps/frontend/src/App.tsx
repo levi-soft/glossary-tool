@@ -12,6 +12,10 @@ import DashboardPage from './pages/DashboardPage'
 // Components
 import Layout from './components/Layout'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { ProtectedRoute } from './components/ProtectedRoute'
+
+// Contexts
+import { AuthProvider } from './contexts/AuthContext'
 
 // Create a client
 const queryClient = new QueryClient({
@@ -26,22 +30,26 @@ const queryClient = new QueryClient({
 function App() {
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <Layout>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/" element={<Navigate to="/projects" replace />} />
-              <Route path="/projects" element={<ProjectsPage />} />
-              <Route path="/projects/:id" element={<ProjectDetailPage />} />
-              <Route path="/projects/:id/glossary" element={<GlossaryPage />} />
-              <Route path="/projects/:id/analytics" element={<DashboardPage />} />
-              <Route path="*" element={<Navigate to="/projects" replace />} />
-            </Routes>
-          </Layout>
-        </BrowserRouter>
-        <Toaster position="top-right" />
-      </QueryClientProvider>
+      <AuthProvider>
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter>
+            <Layout>
+              <Routes>
+                {/* Auth disabled for personal use */}
+                {/* <Route path="/login" element={<LoginPage />} /> */}
+                
+                <Route path="/" element={<Navigate to="/projects" replace />} />
+                <Route path="/projects" element={<ProjectsPage />} />
+                <Route path="/projects/:id" element={<ProjectDetailPage />} />
+                <Route path="/projects/:id/glossary" element={<GlossaryPage />} />
+                <Route path="/projects/:id/analytics" element={<DashboardPage />} />
+                <Route path="*" element={<Navigate to="/projects" replace />} />
+              </Routes>
+            </Layout>
+          </BrowserRouter>
+          <Toaster position="top-right" />
+        </QueryClientProvider>
+      </AuthProvider>
     </ErrorBoundary>
   )
 }

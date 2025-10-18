@@ -1,23 +1,44 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
 async function main() {
   console.log('🌱 Starting seed...');
 
-  // Create a default user
+  // Create ADMIN account
+  const adminPassword = await bcrypt.hash('admin123', 12);
+  const admin = await prisma.user.upsert({
+    where: { email: 'admin@glossary-tool.com' },
+    update: {},
+    create: {
+      email: 'admin@glossary-tool.com',
+      username: 'admin',
+      password: adminPassword,
+      role: 'ADMIN',
+    },
+  });
+
+  console.log('✅ Created ADMIN user:', admin.username);
+  console.log('   Email: admin@glossary-tool.com');
+  console.log('   Password: admin123');
+
+  // Create demo user
+  const demoPassword = await bcrypt.hash('demo123', 12);
   const user = await prisma.user.upsert({
     where: { email: 'demo@glossary-tool.com' },
     update: {},
     create: {
       email: 'demo@glossary-tool.com',
       username: 'demo',
-      password: 'hashed-password', // TODO: Hash properly
-      role: 'ADMIN',
+      password: demoPassword,
+      role: 'TRANSLATOR',
     },
   });
 
-  console.log('✅ Created user:', user.username);
+  console.log('✅ Created DEMO user:', user.username);
+  console.log('   Email: demo@glossary-tool.com');
+  console.log('   Password: demo123');
 
   // Create sample projects
   const project1 = await prisma.project.upsert({
@@ -30,7 +51,7 @@ async function main() {
       gameFormat: 'renpy',
       sourceLang: 'en',
       targetLang: 'vi',
-      ownerId: user.id,
+      ownerId: admin.id,
     },
   });
 
@@ -44,7 +65,7 @@ async function main() {
       gameFormat: 'rpgmaker',
       sourceLang: 'en',
       targetLang: 'vi',
-      ownerId: user.id,
+      ownerId: admin.id,
     },
   });
 
@@ -196,10 +217,16 @@ async function main() {
 
   console.log('🎉 Seed completed successfully!');
   console.log('\n📊 Summary:');
-  console.log('- Users:', 1);
+  console.log('- Users: 2 (1 ADMIN, 1 TRANSLATOR)');
   console.log('- Projects:', 2);
   console.log('- Glossary terms:', glossaryTerms.count);
   console.log('- Text entries:', textEntries.count + 2);
+  console.log('\n🔐 Admin Account:');
+  console.log('   Email: admin@glossary-tool.com');
+  console.log('   Password: admin123');
+  console.log('\n🔐 Demo Account:');
+  console.log('   Email: demo@glossary-tool.com');
+  console.log('   Password: demo123');
   console.log('\n🚀 You can now run: npm run dev');
 }
 

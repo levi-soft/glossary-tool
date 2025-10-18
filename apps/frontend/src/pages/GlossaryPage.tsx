@@ -433,7 +433,7 @@ export default function GlossaryPage() {
                   type="button"
                   onClick={() => setShowAddModal(false)}
                   disabled={createTerm.isPending}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className="flex-1 px-4 py-2 bg-white text-gray-900 border-2 border-gray-400 rounded-md hover:bg-gray-50 disabled:opacity-50 font-medium"
                 >
                   Hủy
                 </button>
@@ -531,7 +531,7 @@ export default function GlossaryPage() {
                     setEditingTerm(null)
                   }}
                   disabled={updateTerm.isPending}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                  className="flex-1 px-4 py-2 bg-white text-gray-900 border-2 border-gray-400 rounded-md hover:bg-gray-50 font-medium"
                 >
                   Hủy
                 </button>

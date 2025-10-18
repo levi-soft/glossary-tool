@@ -46,7 +46,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 </button>
                 <button
                   onClick={() => window.location.href = '/projects'}
-                  className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  className="w-full px-4 py-2 bg-white text-gray-900 border-2 border-gray-400 rounded-lg hover:bg-gray-50 font-medium"
                 >
                   Back to Projects
                 </button>
