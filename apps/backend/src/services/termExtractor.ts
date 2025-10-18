@@ -85,7 +85,7 @@ export class TermExtractor {
   private extractTerms(text: string): string[] {
     const terms: string[] = [];
 
-    // Pattern 1: Capitalized words (likely proper nouns, names)
+    // Pattern 1: Capitalized words (English)
     const capitalizedWords = text.match(/\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b/g) || [];
     terms.push(...capitalizedWords);
 
@@ -97,9 +97,25 @@ export class TermExtractor {
     const quotedWords = text.match(/"([^"]+)"/g) || [];
     terms.push(...quotedWords.map(q => q.replace(/"/g, '')));
 
-    // Pattern 4: Numbers with units (100 HP, 50 MP)
+    // Pattern 4: Numbers with units
     const numberedTerms = text.match(/\d+\s*[A-Z]{2,}/g) || [];
     terms.push(...numberedTerms);
+
+    // Pattern 5: Japanese Katakana sequences (ア-ン)
+    const katakana = text.match(/[ァ-ヴー]+/g) || [];
+    terms.push(...katakana);
+
+    // Pattern 6: Japanese Kanji + Hiragana (common names/terms)
+    const kanjiTerms = text.match(/[\u4e00-\u9faf]+[\u3040-\u309f]*/g) || [];
+    terms.push(...kanjiTerms);
+
+    // Pattern 7: Korean Hangul sequences
+    const hangul = text.match(/[가-힣]+/g) || [];
+    terms.push(...hangul);
+
+    // Pattern 8: Chinese characters sequences
+    const chinese = text.match(/[\u4e00-\u9fff]{2,}/g) || [];
+    terms.push(...chinese);
 
     return [...new Set(terms)]; // Remove duplicates
   }

@@ -20,6 +20,7 @@ import ImportModal from '@/components/ImportModal'
 import CommentsPanel from '@/components/CommentsPanel'
 import { useKeyboardShortcuts, SHORTCUTS_INFO } from '@/hooks/useKeyboardShortcuts'
 import toast from 'react-hot-toast'
+import axios from 'axios'
 
 const STATUS_LABELS = {
   UNTRANSLATED: { label: 'Chưa dịch', color: 'bg-gray-100 text-gray-700' },
@@ -186,24 +187,56 @@ export default function ProjectDetailPage() {
     }
 
     setBatchTranslating(true)
-    let successCount = 0
-    let errorCount = 0
-
+    
     try {
-      for (const entryId of selectedEntries) {
-        try {
-          await aiTranslate.mutateAsync({ entryId })
-          successCount++
-        } catch (error) {
-          errorCount++
-        }
-      }
+      // Non-blocking: Dịch parallel, không block UI
+      const entryIds = Array.from(selectedEntries)
+      const promises = entryIds.map(entryId =>
+        aiTranslate.mutateAsync({ entryId })
+          .then(() => ({ entryId, success: true }))
+          .catch(() => ({ entryId, success: false }))
+      )
 
+      // Wait for all, nhưng UI vẫn responsive
+      const results = await Promise.allSettled(promises)
+      
+      const successCount = results.filter(r =>
+        r.status === 'fulfilled' && r.value.success
+      ).length
+      
       toast.success(`Đã dịch ${successCount}/${selectedEntries.size} entries`)
       setSelectedEntries(new Set())
     } finally {
       setBatchTranslating(false)
     }
+  }
+
+  const handleBulkApplyAI = async () => {
+    const entriesToApply = entries.filter(e =>
+      selectedEntries.has(e.id) && e.aiSuggestions
+    )
+    
+    if (entriesToApply.length === 0) {
+      toast.error('Không có AI suggestions để apply')
+      return
+    }
+    
+    let successCount = 0
+    
+    for (const entry of entriesToApply) {
+      try {
+        const translation = (entry.aiSuggestions as any)?.translation
+        if (translation && translation !== 'N/A') {
+          await handleTranslationChange(entry.id, translation)
+          successCount++
+        }
+      } catch (error) {
+        // Continue with others
+      }
+    }
+    
+    toast.success(`Đã apply ${successCount}/${entriesToApply.length} translations`)
+    setSelectedEntries(new Set())
   }
 
   // Keyboard shortcuts
@@ -362,7 +395,7 @@ export default function ProjectDetailPage() {
               <button
                 onClick={handleBatchTranslate}
                 disabled={batchTranslating}
-                className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 flex items-center"
+                className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 flex items-center font-medium"
               >
                 {batchTranslating ? (
                   <>
@@ -376,6 +409,19 @@ export default function ProjectDetailPage() {
                   </>
                 )}
               </button>
+              
+              {/* Bulk Apply AI Button */}
+              {entries.filter(e => selectedEntries.has(e.id) && e.aiSuggestions).length > 0 && (
+                <button
+                  onClick={handleBulkApplyAI}
+                  className="px-4 py-1.5 bg-green-600 text-white text-sm rounded hover:bg-green-700 flex items-center font-medium"
+                >
+                  ✓ Apply Hàng Loạt ({entries.filter(e =>
+                    selectedEntries.has(e.id) && e.aiSuggestions
+                  ).length})
+                </button>
+              )}
+              
               <button
                 onClick={() => setSelectedEntries(new Set())}
                 className="px-4 py-1.5 bg-white text-gray-900 border-2 border-gray-400 text-sm rounded hover:bg-gray-50 font-medium"
@@ -684,20 +730,39 @@ export default function ProjectDetailPage() {
                   <button
                     onClick={async () => {
                       const translation = (aiModalEntry.aiSuggestions as any)?.translation
-                      if (translation) {
+                      if (translation && translation !== 'N/A') {
                         await handleTranslationChange(aiModalEntry.id, translation)
                         setShowAIModal(false)
+                      } else {
+                        toast.error('Translation không hợp lệ. Hãy Re-request!')
                       }
                     }}
-                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    disabled={!(aiModalEntry.aiSuggestions as any)?.translation || (aiModalEntry.aiSuggestions as any)?.translation === 'N/A'}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Apply Translation
                   </button>
                   <button
-                    onClick={() => aiTranslate.mutate({ entryId: aiModalEntry.id })}
-                    className="px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50"
+                    onClick={async () => {
+                      try {
+                        // Call API directly với forceRefresh
+                        await axios.post(`/api/ai/translate/entry/${aiModalEntry.id}`, {
+                          useGlossary: true,
+                          forceRefresh: true // Skip cache!
+                        })
+                        
+                        // Fetch updated entry
+                        const response = await axios.get(`/api/entries/${aiModalEntry.id}`)
+                        setAIModalEntry(response.data.data)
+                        
+                        toast.success('✅ AI translation mới!')
+                      } catch (error) {
+                        toast.error('Lỗi khi re-request AI')
+                      }
+                    }}
+                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 font-bold"
                   >
-                    Re-request
+                    🔄 Re-request (New Translation)
                   </button>
                 </div>
 
