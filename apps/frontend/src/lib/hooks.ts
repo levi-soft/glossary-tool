@@ -303,6 +303,8 @@ export function useAITranslateEntry() {
     mutationFn: ({ entryId, useGlossary = true }: { entryId: string; useGlossary?: boolean }) =>
       aiApi.translateEntry(entryId, useGlossary),
     onSuccess: (_, variables) => {
+      // Invalidate both specific entry and entries list to trigger refresh
+      queryClient.invalidateQueries({ queryKey: ['entries'] })
       queryClient.invalidateQueries({ queryKey: ['entries', variables.entryId] })
       toast.success('AI translation hoàn thành!')
     },

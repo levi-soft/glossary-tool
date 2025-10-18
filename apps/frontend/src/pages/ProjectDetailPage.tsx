@@ -351,10 +351,10 @@ export default function ProjectDetailPage() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
                       Context
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '300px' }}>
                       Original Text
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider" style={{ minWidth: '300px' }}>
                       Translation
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">
@@ -393,16 +393,18 @@ export default function ProjectDetailPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        {entry.originalText}
+                      <td className="px-4 py-3 text-sm text-gray-900" style={{ minWidth: '300px' }}>
+                        <div className="max-w-md break-words whitespace-pre-wrap">
+                          {entry.originalText}
+                        </div>
                       </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="text"
+                      <td className="px-4 py-3" style={{ minWidth: '300px' }}>
+                        <textarea
                           value={entry.currentTranslation || ''}
                           onChange={(e) => handleTranslationChange(entry.id, e.target.value)}
                           placeholder="Nhập bản dịch..."
-                          className={`w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                          rows={2}
+                          className={`w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y ${
                             !entry.currentTranslation ? 'bg-yellow-50' : ''
                           }`}
                           onClick={(e) => e.stopPropagation()}
@@ -501,18 +503,27 @@ export default function ProjectDetailPage() {
                     </p>
                   )}
                 </div>
-                <button
-                  onClick={async () => {
-                    const entry = entries.find((e) => e.id === selectedEntry)
-                    const translation = (entry?.aiSuggestions as any)?.translation
-                    if (translation) {
-                      await handleTranslationChange(selectedEntry, translation)
-                    }
-                  }}
-                  className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex-shrink-0"
-                >
-                  Apply
-                </button>
+                <div className="flex flex-col space-y-1">
+                  <button
+                    onClick={async () => {
+                      const entry = entries.find((e) => e.id === selectedEntry)
+                      const translation = (entry?.aiSuggestions as any)?.translation
+                      if (translation) {
+                        await handleTranslationChange(selectedEntry, translation)
+                      }
+                    }}
+                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex-shrink-0"
+                  >
+                    Apply
+                  </button>
+                  <button
+                    onClick={() => aiTranslate.mutate({ entryId: selectedEntry })}
+                    disabled={aiTranslate.isPending}
+                    className="px-3 py-1 text-xs border border-blue-600 text-blue-600 rounded hover:bg-blue-50 flex-shrink-0 disabled:opacity-50"
+                  >
+                    Re-request
+                  </button>
+                </div>
               </div>
               
               {/* Alternative translations */}
