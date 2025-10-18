@@ -1,17 +1,22 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, PlusCircle, Edit2, Trash2, Search, Loader2, BookOpen } from 'lucide-react'
-import { 
-  useGlossary, 
+import { ArrowLeft, PlusCircle, Edit2, Trash2, Search, Loader2, BookOpen, Sparkles, Check, X } from 'lucide-react'
+import {
+  useGlossary,
   useGlossaryCategories,
   useCreateGlossaryTerm,
-  useDeleteGlossaryTerm 
+  useDeleteGlossaryTerm
 } from '@/lib/hooks'
+import axios from 'axios'
+import toast from 'react-hot-toast'
 
 export default function GlossaryPage() {
   const { id } = useParams()
   const [searchQuery, setSearchQuery] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showExtractModal, setShowExtractModal] = useState(false)
+  const [extracting, setExtracting] = useState(false)
+  const [extractedTerms, setExtractedTerms] = useState<any[]>([])
   const [formData, setFormData] = useState({
     sourceTerm: '',
     targetTerm: '',
@@ -61,6 +66,44 @@ export default function GlossaryPage() {
 
   const uniqueCategories = Array.from(new Set(categories))
 
+  const handleAutoExtract = async () => {
+    setExtracting(true)
+    try {
+      const response = await axios.post(`/api/glossary/auto-extract/${id}`, {
+        minOccurrences: 2,
+        autoApprove: false,
+      })
+      
+      setExtractedTerms(response.data.data.extracted || [])
+      setShowExtractModal(true)
+      
+      toast.success(`Phát hiện ${response.data.data.extracted.length} thuật ngữ!`)
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Lỗi khi auto-extract')
+    } finally {
+      setExtracting(false)
+    }
+  }
+
+  const handleApproveTerm = async (term: any) => {
+    try {
+      await createTerm.mutateAsync({
+        projectId: id!,
+        sourceTerm: term.sourceTerm,
+        targetTerm: term.targetTerm,
+        category: term.category,
+        description: `Auto-extracted (${term.occurrences} lần, ${Math.round(term.confidence * 100)}% confidence)`,
+        autoApply: true,
+      })
+      
+      // Remove from extracted list
+      setExtractedTerms(prev => prev.filter(t => t.sourceTerm !== term.sourceTerm))
+      toast.success(`Đã thêm: ${term.sourceTerm} → ${term.targetTerm}`)
+    } catch (error) {
+      toast.error('Lỗi khi thêm thuật ngữ')
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -80,13 +123,27 @@ export default function GlossaryPage() {
           </div>
         </div>
 
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-        >
-          <PlusCircle size={18} />
-          <span>Thêm Thuật Ngữ</span>
-        </button>
+        <div className="flex space-x-2">
+          <button
+            onClick={handleAutoExtract}
+            disabled={extracting}
+            className="flex items-center space-x-2 px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 disabled:opacity-50"
+          >
+            {extracting ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Sparkles size={18} />
+            )}
+            <span>Auto-Extract</span>
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+          >
+            <PlusCircle size={18} />
+            <span>Thêm Thuật Ngữ</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -343,6 +400,92 @@ export default function GlossaryPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Auto-Extract Results Modal */}
+      {showExtractModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h2 className="text-2xl font-bold">Auto-Extracted Terms</h2>
+                <p className="text-sm text-gray-600">
+                  Review và approve các thuật ngữ được phát hiện
+                </p>
+              </div>
+              <button
+                onClick={() => setShowExtractModal(false)}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto">
+              {extractedTerms.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-gray-600">Không tìm thấy thuật ngữ nào</p>
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Original</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Translation</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Category</th>
+                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Occurrences</th>
+                      <th className="px-4 py-2 text-center text-xs font-medium text-gray-500">Confidence</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {extractedTerms.map((term, idx) => (
+                      <tr key={idx} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm font-medium">{term.sourceTerm}</td>
+                        <td className="px-4 py-3 text-sm">{term.targetTerm}</td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded">
+                            {term.category}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-center">{term.occurrences}x</td>
+                        <td className="px-4 py-3 text-sm text-center">
+                          <span className={`font-medium ${
+                            term.confidence >= 0.8 ? 'text-green-600' :
+                            term.confidence >= 0.6 ? 'text-yellow-600' : 'text-gray-600'
+                          }`}>
+                            {Math.round(term.confidence * 100)}%
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => handleApproveTerm(term)}
+                            className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
+                          >
+                            <Check size={14} className="inline mr-1" />
+                            Approve
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="mt-4 flex justify-between items-center">
+              <p className="text-sm text-gray-600">
+                {extractedTerms.length} thuật ngữ được phát hiện
+              </p>
+              <button
+                onClick={() => setShowExtractModal(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Đóng
+              </button>
+            </div>
           </div>
         </div>
       )}

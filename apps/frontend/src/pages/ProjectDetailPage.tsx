@@ -33,6 +33,8 @@ export default function ProjectDetailPage() {
   const [page, setPage] = useState(1)
   const [showImportModal, setShowImportModal] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [selectedEntries, setSelectedEntries] = useState<Set<string>>(new Set())
+  const [batchTranslating, setBatchTranslating] = useState(false)
 
   // Fetch project and entries
   const { data: project, isLoading: projectLoading } = useProject(id)
@@ -92,8 +94,56 @@ export default function ProjectDetailPage() {
           status: translation ? EntryStatus.TRANSLATED : EntryStatus.UNTRANSLATED,
         },
       })
+      toast.success('Đã lưu bản dịch')
     } catch (error) {
-      // Error handled by hook
+      toast.error('Lỗi khi lưu')
+    }
+  }
+
+  const handleSelectEntry = (entryId: string) => {
+    setSelectedEntries(prev => {
+      const next = new Set(prev)
+      if (next.has(entryId)) {
+        next.delete(entryId)
+      } else {
+        next.add(entryId)
+      }
+      return next
+    })
+  }
+
+  const handleSelectAll = () => {
+    if (selectedEntries.size === entries.length) {
+      setSelectedEntries(new Set())
+    } else {
+      setSelectedEntries(new Set(entries.map(e => e.id)))
+    }
+  }
+
+  const handleBatchTranslate = async () => {
+    if (selectedEntries.size === 0) {
+      toast.error('Vui lòng chọn ít nhất 1 entry')
+      return
+    }
+
+    setBatchTranslating(true)
+    let successCount = 0
+    let errorCount = 0
+
+    try {
+      for (const entryId of selectedEntries) {
+        try {
+          await aiTranslate.mutateAsync({ entryId })
+          successCount++
+        } catch (error) {
+          errorCount++
+        }
+      }
+
+      toast.success(`Đã dịch ${successCount}/${selectedEntries.size} entries`)
+      setSelectedEntries(new Set())
+    } finally {
+      setBatchTranslating(false)
     }
   }
 
@@ -173,6 +223,38 @@ export default function ProjectDetailPage() {
 
       {/* Search and Filter Bar */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
+        {selectedEntries.size > 0 && (
+          <div className="mb-3 flex items-center justify-between bg-blue-50 p-3 rounded-lg">
+            <span className="text-sm text-gray-700">
+              {selectedEntries.size} entries được chọn
+            </span>
+            <div className="flex space-x-2">
+              <button
+                onClick={handleBatchTranslate}
+                disabled={batchTranslating}
+                className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 flex items-center"
+              >
+                {batchTranslating ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin mr-1" />
+                    Đang dịch...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={14} className="mr-1" />
+                    Dịch Hàng Loạt
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => setSelectedEntries(new Set())}
+                className="px-4 py-1.5 border border-gray-300 text-sm rounded hover:bg-gray-50"
+              >
+                Bỏ chọn
+              </button>
+            </div>
+          </div>
+        )}
         <div className="flex items-center space-x-4">
           <div className="flex-1 relative">
             <Search
@@ -255,6 +337,14 @@ export default function ProjectDetailPage() {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+                      <input
+                        type="checkbox"
+                        checked={selectedEntries.size === entries.length && entries.length > 0}
+                        onChange={handleSelectAll}
+                        className="cursor-pointer"
+                      />
+                    </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-20">
                       ID
                     </th>
@@ -284,6 +374,15 @@ export default function ProjectDetailPage() {
                       }`}
                       onClick={() => setSelectedEntry(entry.id)}
                     >
+                      <td className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedEntries.has(entry.id)}
+                          onChange={() => handleSelectEntry(entry.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="cursor-pointer"
+                        />
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-500">
                         {String((page - 1) * 50 + index + 1).padStart(3, '0')}
                       </td>
@@ -393,7 +492,7 @@ export default function ProjectDetailPage() {
                   </p>
                   <p className="text-xs text-gray-500">
                     Confidence: {Math.round(((entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.confidence || 0.85) * 100)}%
-                    • Source: Gemini Pro
+                    • Model: {(entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.model || 'AI'}
                     {(entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.cached && ' • Cached'}
                   </p>
                   {(entries.find((e) => e.id === selectedEntry)?.aiSuggestions as any)?.reasoning && (
@@ -403,11 +502,11 @@ export default function ProjectDetailPage() {
                   )}
                 </div>
                 <button
-                  onClick={() => {
+                  onClick={async () => {
                     const entry = entries.find((e) => e.id === selectedEntry)
                     const translation = (entry?.aiSuggestions as any)?.translation
                     if (translation) {
-                      handleTranslationChange(selectedEntry, translation)
+                      await handleTranslationChange(selectedEntry, translation)
                     }
                   }}
                   className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 flex-shrink-0"
@@ -457,7 +556,7 @@ export default function ProjectDetailPage() {
                 )}
               </button>
               <p className="text-xs text-gray-500 mt-2">
-                Sử dụng Google Gemini (miễn phí)
+                AI translation service available
               </p>
             </div>
           )}

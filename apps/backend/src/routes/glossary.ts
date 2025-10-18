@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
+import { termExtractor } from '../services/termExtractor';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -355,4 +356,59 @@ async function applyGlossaryToEntries(
   return matchingEntries.length;
 }
 
+// POST /api/glossary/auto-extract/:projectId - Auto-extract terms from translations
+router.post('/auto-extract/:projectId', async (req: Request, res: Response) => {
+  try {
+    const { projectId } = req.params;
+    const { minOccurrences = 2, autoApprove = false } = req.body;
+
+    // Fetch all translated entries
+    const entries = await prisma.textEntry.findMany({
+      where: {
+        projectId,
+        currentTranslation: { not: null },
+        status: { in: ['TRANSLATED', 'APPROVED'] },
+      },
+      select: {
+        originalText: true,
+        currentTranslation: true,
+        context: true,
+      },
+    });
+
+    if (entries.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No translated entries found',
+      });
+    }
+
+    // Extract terms (convert null to undefined for type compatibility)
+    const extractedTerms = await termExtractor.extract(
+      entries.map(e => ({
+        originalText: e.originalText,
+        currentTranslation: e.currentTranslation ?? undefined,
+        context: e.context ?? undefined,
+      })),
+      minOccurrences
+    );
+
+    // Get stats
+    const stats = termExtractor.getStats(extractedTerms);
+
+    res.json({
+      success: true,
+      data: {
+        extracted: extractedTerms,
+        stats,
+      },
+    });
+  } catch (error) {
+    console.error('Error auto-extracting terms:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to auto-extract terms',
+    });
+  }
+});
 export default router;
