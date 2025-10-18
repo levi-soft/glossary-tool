@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
   ArrowLeft,
@@ -11,10 +11,12 @@ import {
   Loader2,
   FolderOpen,
   X,
+  Keyboard,
 } from 'lucide-react'
 import { useProject, useEntries, useUpdateEntry, useAITranslateEntry } from '@/lib/hooks'
 import { EntryStatus } from '@/lib/types'
 import ImportModal from '@/components/ImportModal'
+import { useKeyboardShortcuts, SHORTCUTS_INFO } from '@/hooks/useKeyboardShortcuts'
 import toast from 'react-hot-toast'
 
 const STATUS_LABELS = {
@@ -34,10 +36,15 @@ export default function ProjectDetailPage() {
   const [page, setPage] = useState(1)
   const [showImportModal, setShowImportModal] = useState(false)
   const [showAIModal, setShowAIModal] = useState(false)
+  const [showShortcutsInfo, setShowShortcutsInfo] = useState(false)
   const [aiModalEntry, setAIModalEntry] = useState<any>(null)
   const [exporting, setExporting] = useState(false)
   const [selectedEntries, setSelectedEntries] = useState<Set<string>>(new Set())
   const [batchTranslating, setBatchTranslating] = useState(false)
+  const [editingTranslations, setEditingTranslations] = useState<Map<string, string>>(new Map())
+  const [editingStatuses, setEditingStatuses] = useState<Map<string, EntryStatus>>(new Map())
+  
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Fetch project and entries
   const { data: project, isLoading: projectLoading } = useProject(id)
@@ -88,6 +95,39 @@ export default function ProjectDetailPage() {
     setPage(1)
   }, [searchQuery, filterStatus])
 
+  const handleTranslationInput = (entryId: string, value: string) => {
+    // Just update local state, don't save yet
+    setEditingTranslations(prev => {
+      const next = new Map(prev)
+      next.set(entryId, value)
+      return next
+    })
+  }
+
+  const handleTranslationSave = async (entryId: string) => {
+    const newTranslation = editingTranslations.get(entryId)
+    if (newTranslation === undefined) return // No changes
+    
+    try {
+      await updateEntry.mutateAsync({
+        id: entryId,
+        data: {
+          currentTranslation: newTranslation,
+          status: newTranslation ? EntryStatus.TRANSLATED : EntryStatus.UNTRANSLATED,
+        },
+      })
+      // Clear from editing state
+      setEditingTranslations(prev => {
+        const next = new Map(prev)
+        next.delete(entryId)
+        return next
+      })
+      toast.success('Đã lưu')
+    } catch (error) {
+      toast.error('Lỗi khi lưu')
+    }
+  }
+
   const handleTranslationChange = async (entryId: string, translation: string) => {
     try {
       await updateEntry.mutateAsync({
@@ -100,6 +140,18 @@ export default function ProjectDetailPage() {
       toast.success('Đã lưu bản dịch')
     } catch (error) {
       toast.error('Lỗi khi lưu')
+    }
+  }
+
+  const handleStatusChange = async (entryId: string, newStatus: EntryStatus) => {
+    try {
+      await updateEntry.mutateAsync({
+        id: entryId,
+        data: { status: newStatus },
+      })
+      toast.success('Đã cập nhật trạng thái')
+    } catch (error) {
+      toast.error('Lỗi khi cập nhật')
     }
   }
 
@@ -149,6 +201,43 @@ export default function ProjectDetailPage() {
       setBatchTranslating(false)
     }
   }
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    onRequestAI: () => {
+      if (selectedEntry && aiModalEntry) {
+        aiTranslate.mutate({ entryId: selectedEntry })
+      }
+    },
+    onApplyAI: () => {
+      if (aiModalEntry?.aiSuggestions) {
+        const translation = (aiModalEntry.aiSuggestions as any)?.translation
+        if (translation) {
+          handleTranslationChange(aiModalEntry.id, translation)
+          setShowAIModal(false)
+        }
+      }
+    },
+    onFocusSearch: () => {
+      searchInputRef.current?.focus()
+    },
+    onNextEntry: () => {
+      const currentIndex = entries.findIndex(e => e.id === selectedEntry)
+      if (currentIndex < entries.length - 1) {
+        setSelectedEntry(entries[currentIndex + 1].id)
+      }
+    },
+    onPrevEntry: () => {
+      const currentIndex = entries.findIndex(e => e.id === selectedEntry)
+      if (currentIndex > 0) {
+        setSelectedEntry(entries[currentIndex - 1].id)
+      }
+    },
+    onEscape: () => {
+      setShowAIModal(false)
+      setShowShortcutsInfo(false)
+    },
+  }, !showImportModal && !showAIModal) // Disable when modals open
 
   if (projectLoading) {
     return (
@@ -221,8 +310,39 @@ export default function ProjectDetailPage() {
             )}
             <span>Export</span>
           </button>
+          <button
+            onClick={() => setShowShortcutsInfo(true)}
+            className="flex items-center space-x-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            title="Keyboard Shortcuts"
+          >
+            <Keyboard size={18} />
+          </button>
         </div>
       </div>
+
+      {/* Shortcuts Info Modal */}
+      {showShortcutsInfo && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold">Keyboard Shortcuts</h3>
+              <button onClick={() => setShowShortcutsInfo(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="space-y-2">
+              {SHORTCUTS_INFO.map((shortcut, i) => (
+                <div key={i} className="flex justify-between items-center py-2 border-b">
+                  <span className="text-sm text-gray-900">{shortcut.action}</span>
+                  <kbd className="px-2 py-1 text-xs font-semibold bg-gray-100 border border-gray-300 rounded">
+                    {shortcut.key}
+                  </kbd>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Search and Filter Bar */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
@@ -265,8 +385,9 @@ export default function ProjectDetailPage() {
               className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"
             />
             <input
+              ref={searchInputRef}
               type="text"
-              placeholder="Tìm kiếm text..."
+              placeholder="Tìm kiếm text... (Ctrl+F)"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -403,24 +524,39 @@ export default function ProjectDetailPage() {
                       </td>
                       <td className="px-4 py-3" style={{ minWidth: '300px' }}>
                         <textarea
-                          value={entry.currentTranslation || ''}
-                          onChange={(e) => handleTranslationChange(entry.id, e.target.value)}
-                          placeholder="Nhập bản dịch..."
+                          value={editingTranslations.get(entry.id) ?? entry.currentTranslation ?? ''}
+                          onChange={(e) => handleTranslationInput(entry.id, e.target.value)}
+                          onBlur={() => handleTranslationSave(entry.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && e.ctrlKey) {
+                              e.preventDefault()
+                              handleTranslationSave(entry.id)
+                            }
+                          }}
+                          placeholder="Nhập bản dịch (Ctrl+Enter hoặc click ra ngoài để lưu)..."
                           rows={2}
                           className={`w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y ${
-                            !entry.currentTranslation ? 'bg-yellow-50' : ''
+                            !entry.currentTranslation && !editingTranslations.get(entry.id) ? 'bg-yellow-50' : ''
                           }`}
                           onClick={(e) => e.stopPropagation()}
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded ${
+                        <select
+                          value={entry.status}
+                          onChange={(e) => handleStatusChange(entry.id, e.target.value as EntryStatus)}
+                          onClick={(e) => e.stopPropagation()}
+                          className={`px-2 py-1 text-xs font-medium rounded border-0 cursor-pointer ${
                             STATUS_LABELS[entry.status].color
                           }`}
                         >
-                          {STATUS_LABELS[entry.status].label}
-                        </span>
+                          <option value={EntryStatus.UNTRANSLATED}>Chưa dịch</option>
+                          <option value={EntryStatus.IN_PROGRESS}>Đang dịch</option>
+                          <option value={EntryStatus.TRANSLATED}>Đã dịch</option>
+                          <option value={EntryStatus.IN_REVIEW}>Đang review</option>
+                          <option value={EntryStatus.NEEDS_REVISION}>Cần sửa</option>
+                          <option value={EntryStatus.APPROVED}>Đã duyệt</option>
+                        </select>
                       </td>
                       <td className="px-4 py-3 text-center">
                         <button

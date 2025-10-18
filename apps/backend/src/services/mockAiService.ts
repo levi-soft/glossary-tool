@@ -43,37 +43,47 @@ const MOCK_TRANSLATIONS: Record<string, string> = {
 
 export class MockAIService {
   async translate(request: TranslationRequest): Promise<TranslationResponse> {
-    console.log('🎭 Using Mock AI Service (Gemini not available)');
+    console.log('🎭 Using Mock AI Service');
+    
+    // Check glossary terms FIRST (most important!)
+    const glossaryTerms = request.context?.glossaryTerms || [];
+    if (glossaryTerms.length > 0) {
+      console.log(`📚 Mock AI using ${glossaryTerms.length} glossary terms`);
+    }
     
     // Simulate API delay
     await this.delay(1000 + Math.random() * 2000);
 
-    const text = request.text.toLowerCase();
-    let translation = '';
+    let translation = request.text;
 
-    // Try to find translation in dictionary
-    const found = Object.keys(MOCK_TRANSLATIONS).find(key => 
-      text.includes(key)
-    );
-
-    if (found) {
-      // Use dictionary translation
-      translation = text.replace(
-        new RegExp(found, 'gi'),
-        MOCK_TRANSLATIONS[found]
-      );
-      // Capitalize first letter
-      translation = translation.charAt(0).toUpperCase() + translation.slice(1);
-    } else {
-      // Generate mock translation
-      translation = this.generateMockTranslation(request.text, request.targetLang);
+    // Step 1: Apply glossary terms FIRST (highest priority!)
+    for (const term of glossaryTerms) {
+      const regex = new RegExp(term.source, 'gi');
+      translation = translation.replace(regex, term.target);
     }
+
+    // Step 2: Apply built-in dictionary for remaining words
+    const textLower = translation.toLowerCase();
+    for (const [key, value] of Object.entries(MOCK_TRANSLATIONS)) {
+      if (textLower.includes(key)) {
+        const regex = new RegExp(key, 'gi');
+        translation = translation.replace(regex, value);
+      }
+    }
+
+    // Capitalize first letter
+    translation = translation.charAt(0).toUpperCase() + translation.slice(1);
+
+    const usedGlossary = glossaryTerms.length > 0;
+    const reasoning = usedGlossary
+      ? `🎭 Mock AI với ${glossaryTerms.length} glossary terms được áp dụng.`
+      : '🎭 Mock AI - Không có glossary terms.';
 
     return {
       translation,
-      confidence: 0.75, // Mock confidence
+      confidence: usedGlossary ? 0.9 : 0.75,
       alternatives: this.generateAlternatives(translation),
-      reasoning: '🎭 Mock AI - Gemini API không available. Đây là bản dịch mô phỏng.',
+      reasoning,
     };
   }
 
