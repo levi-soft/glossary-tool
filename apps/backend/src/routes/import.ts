@@ -39,12 +39,78 @@ const upload = multer({
     }
   },
 });
+// POST /api/import/preview - Preview file columns
+router.post('/preview', upload.single('file'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No file uploaded',
+      });
+    }
+
+    const content = fs.readFileSync(req.file.path, 'utf-8');
+    const ext = path.extname(req.file.originalname).toLowerCase();
+
+    if (ext === '.csv' || ext === '.tsv') {
+      // CSV/TSV preview
+      const { csvParser } = await import('../services/parsers/csvParser');
+      const columns = csvParser.getColumns(content);
+      const suggestedMapping = csvParser.autoDetectMapping(columns);
+
+      // Get first row as preview
+      const records = (await import('csv-parse/sync')).parse(content, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+        bom: true,
+        to: 1,
+      });
+
+      // Clean up file
+      fs.unlinkSync(req.file.path);
+
+      res.json({
+        success: true,
+        data: {
+          columns,
+          suggestedMapping,
+          previewData: records[0] || {},
+          fileType: ext === '.csv' ? 'csv' : 'tsv',
+        },
+      });
+    } else {
+      // For non-CSV, just return basic info
+      fs.unlinkSync(req.file.path);
+      
+      res.json({
+        success: true,
+        data: {
+          fileType: ext.replace('.', ''),
+          message: 'Column mapping not available for this format',
+        },
+      });
+    }
+  } catch (error) {
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
+    }
+
+    console.error('Preview Error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Preview failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 
 // POST /api/import/:projectId - Import game file
 router.post('/:projectId', upload.single('file'), async (req: Request, res: Response) => {
   try {
     const { projectId } = req.params;
-    const { format, autoApplyGlossary = true } = req.body;
+    const { format, autoApplyGlossary = true, columnMapping } = req.body;
     
     if (!req.file) {
       return res.status(400).json({
@@ -59,7 +125,6 @@ router.post('/:projectId', upload.single('file'), async (req: Request, res: Resp
     });
 
     if (!project) {
-      // Clean up uploaded file
       fs.unlinkSync(req.file.path);
       return res.status(404).json({
         success: false,
@@ -69,13 +134,35 @@ router.post('/:projectId', upload.single('file'), async (req: Request, res: Resp
 
     // Read file content
     const content = fs.readFileSync(req.file.path, 'utf-8');
+    const ext = path.extname(req.file.originalname).toLowerCase();
 
-    // Parse file
-    const parseResult = await parserManager.parse(
-      content,
-      req.file.originalname,
-      format as GameFormat
-    );
+    let parseResult: any;
+
+    // Check if CSV/TSV with column mapping
+    if ((ext === '.csv' || ext === '.tsv') && columnMapping) {
+      console.log('📊 Parsing CSV with column mapping:', columnMapping);
+      
+      const { csvParser } = await import('../services/parsers/csvParser');
+      const mapping = typeof columnMapping === 'string' ? JSON.parse(columnMapping) : columnMapping;
+      const entries = csvParser.parseWithMapping(content, req.file.originalname, mapping);
+      
+      parseResult = {
+        entries,
+        format: ext === '.csv' ? 'csv' : 'tsv',
+        stats: {
+          totalEntries: entries.length,
+          fileSize: content.length,
+          parseTime: 0,
+        },
+      };
+    } else {
+      // Use regular parser
+      parseResult = await parserManager.parse(
+        content,
+        req.file.originalname,
+        format as GameFormat
+      );
+    }
 
     // Create entries in database
     const createPromises = parseResult.entries.map((entry) =>

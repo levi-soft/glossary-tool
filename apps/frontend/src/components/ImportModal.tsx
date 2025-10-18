@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Upload, X, FileText, Loader2 } from 'lucide-react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
+import ColumnMappingModal from './ColumnMappingModal'
 
 interface ImportModalProps {
   projectId: string
@@ -15,6 +16,12 @@ export default function ImportModal({ projectId, onClose, onSuccess }: ImportMod
   const [autoApplyGlossary, setAutoApplyGlossary] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [dragActive, setDragActive] = useState(false)
+  
+  // Column mapping states
+  const [showMappingModal, setShowMappingModal] = useState(false)
+  const [columns, setColumns] = useState<string[]>([])
+  const [previewData, setPreviewData] = useState<any>({})
+  const [columnMapping, setColumnMapping] = useState<any[]>([])
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault()
@@ -50,8 +57,44 @@ export default function ImportModal({ projectId, onClose, onSuccess }: ImportMod
       return
     }
 
-    setUploading(true)
+    // Check if CSV/TSV → Show column mapping
+    const ext = file.name.toLowerCase()
+    if (ext.endsWith('.csv') || ext.endsWith('.tsv')) {
+      // Preview first
+      await handlePreview()
+    } else {
+      // Direct import for other formats
+      await handleImport()
+    }
+  }
 
+  const handlePreview = async () => {
+    if (!file) return
+
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await axios.post('/api/import/preview', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+
+      setColumns(response.data.data.columns)
+      setPreviewData(response.data.data.previewData)
+      setColumnMapping(response.data.data.suggestedMapping || [])
+      setShowMappingModal(true)
+    } catch (error: any) {
+      toast.error('Lỗi khi preview file')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleImport = async (mapping?: any[]) => {
+    if (!file) return
+
+    setUploading(true)
     try {
       const formData = new FormData()
       formData.append('file', file)
@@ -59,14 +102,17 @@ export default function ImportModal({ projectId, onClose, onSuccess }: ImportMod
         formData.append('format', format)
       }
       formData.append('autoApplyGlossary', String(autoApplyGlossary))
+      
+      // Add column mapping if provided
+      if (mapping) {
+        formData.append('columnMapping', JSON.stringify(mapping))
+      }
 
       const response = await axios.post(
         `/api/import/${projectId}`,
         formData,
         {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-          },
+          headers: { 'Content-Type': 'multipart/form-data' },
         }
       )
 
@@ -77,9 +123,7 @@ export default function ImportModal({ projectId, onClose, onSuccess }: ImportMod
       onClose()
     } catch (error: any) {
       console.error('Import error:', error)
-      toast.error(
-        error.response?.data?.error || 'Lỗi khi import file'
-      )
+      toast.error(error.response?.data?.error || 'Lỗi khi import file')
     } finally {
       setUploading(false)
     }
@@ -220,14 +264,30 @@ export default function ImportModal({ projectId, onClose, onSuccess }: ImportMod
         </form>
 
         {/* Info */}
-        <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-          <p className="text-xs text-blue-800">
-            💡 <strong>Tip:</strong> File sẽ được phân tích tự động. App sẽ extract
-            tất cả text strings và tạo entries trong database. Các entries trùng lặp sẽ
-            tự động được loại bỏ.
+        <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <p className="text-xs text-yellow-900">
+            💡 <strong>CSV/TSV:</strong> Sau khi chọn file, bạn sẽ được yêu cầu chọn cột thủ công.
+            Các format khác (JSON, Ren'Py) import tự động.
           </p>
         </div>
       </div>
+
+      {/* Column Mapping Modal */}
+      {showMappingModal && (
+        <ColumnMappingModal
+          columns={columns}
+          previewData={previewData}
+          suggestedMapping={columnMapping}
+          onConfirm={(mapping) => {
+            setShowMappingModal(false)
+            handleImport(mapping)
+          }}
+          onCancel={() => {
+            setShowMappingModal(false)
+            setUploading(false)
+          }}
+        />
+      )}
     </div>
   )
 }
