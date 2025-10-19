@@ -1,0 +1,363 @@
+/**
+ * 🧠 AI TRANSLATOR v2.6.9 – APPROVAL MODE (Full Release)
+ * ------------------------------------------------------
+ * ✅ Multi-language translation (EN/JP/ZH/KO/VI)
+ * ✅ Safe async batch
+ * ✅ Auto Extract Terms (Full Target for approval)
+ * ✅ Approve / Clean / Merge Glossary workflow
+ * Author: Pinus & ChatGPT
+ * Date: 2025-10-27
+ */
+
+// ====================== CONFIG ======================
+const USE_MOCK_AI_ONLY = false;
+const HARD_MODE = true;
+const MAX_ROWS_PER_RUN = 100;
+const MODEL = 'openai/gpt-5-mini';
+
+// Get API Key securely
+function getApiKey() {
+  const key = PropertiesService.getScriptProperties().getProperty('OPENROUTER_API_KEY');
+  if (!key) throw new Error('⚠️ Missing OPENROUTER_API_KEY. Add it in Script Properties.');
+  return key;
+}
+
+// ====================== 1️⃣ TRANSLATION ======================
+function translatePendingRows() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Translations');
+  const glossary = ss.getSheetByName('Glossary').getDataRange().getValues();
+  const data = sheet.getDataRange().getValues();
+
+  const pending = [];
+  for (let i = 1; i < data.length; i++) if (data[i][4] === 'Pending' && data[i][2]) pending.push(i);
+  if (pending.length === 0) return SpreadsheetApp.getUi().alert('✅ No Pending rows.');
+
+  const props = PropertiesService.getScriptProperties();
+  const lastIndex = Number(props.getProperty('lastRowIndex')) || 0;
+  const slice = pending.slice(lastIndex, lastIndex + MAX_ROWS_PER_RUN);
+
+  const start = Date.now();
+  const batchTexts = slice.map(i => {
+  const context = data[i][1] ? `[Context: ${data[i][1]}] ` : '';
+  return `${context}${data[i][2]}`;
+});
+  const batches = createAdaptiveBatches(batchTexts, slice);
+
+  for (const b of batches) processBatch(b.texts, b.rows, glossary, sheet);
+
+  props.setProperty('lastRowIndex', lastIndex + slice.length);
+  if (lastIndex + slice.length >= pending.length) props.deleteProperty('lastRowIndex');
+
+  const t = ((Date.now() - start) / 1000).toFixed(1);
+  SpreadsheetApp.getUi().alert(`⚡ Translated ${slice.length} rows in ${t}s.`);
+}
+
+function createAdaptiveBatches(texts, rows) {
+  const res = [];
+  let curT = [], curR = [], len = 0;
+  for (let i = 0; i < texts.length; i++) {
+    const l = texts[i].length;
+    if (len + l > 2000 || curT.length >= 15) {
+      res.push({ texts: curT, rows: curR });
+      curT = []; curR = []; len = 0;
+    }
+    curT.push(texts[i]); curR.push(rows[i]); len += l;
+  }
+  if (curT.length) res.push({ texts: curT, rows: curR });
+  return res;
+}
+
+function processBatch(texts, rows, glossary, sheet) {
+  const combined = texts.map((t,i)=>`${i+1}. ${t}`).join('\n');
+  const filteredGlossary = filterGlossaryForText(glossary, combined);
+  let translations = '';
+
+  if (!USE_MOCK_AI_ONLY) translations = callBatchAI(combined, filteredGlossary);
+  else translations = texts.map(t=>mockTranslateWithGlossary(t,filteredGlossary)).join('\n');
+
+  const lines = translations.split('\n').filter(x=>x.trim()!=='');
+  for (let i = 0; i < rows.length && i < lines.length; i++) {
+    sheet.getRange(rows[i]+1, 4).setValue(lines[i]);
+    sheet.getRange(rows[i]+1, 5).setValue('Translated');
+  }
+}
+
+// ====================== FIXED: TRUE HARD MODE VIETNAMESE TRANSLATION ======================
+function callBatchAI(text, glossary) {
+  const glossText = buildGlossaryText(glossary);
+
+  // ✅ Song ngữ để model hiểu đúng ý
+  const systemPrompt = `
+You are a professional localization translator specialized in East Asian languages (Japanese, Chinese, Korean).
+Translate everything **into natural Vietnamese** with correct grammar and tone.
+Never leave untranslated words, never add explanations.
+
+---
+Bạn là chuyên gia dịch thuật game & kỹ thuật, chuyên dịch các ngôn ngữ Đông Á (Nhật, Trung, Hàn) sang **tiếng Việt chuẩn tự nhiên**.
+Phải dịch nghĩa, không phiên âm, không giữ nguyên chữ gốc.
+`;
+
+  const userPrompt = `
+Translate the following numbered lines into **Vietnamese**, following the glossary and strict rules below.
+Dịch các dòng đánh số dưới đây sang **tiếng Việt** rõ ràng, tự nhiên, tuân thủ nghiêm quy tắc sau:
+
+📘 Glossary (must strictly follow if any match):
+${glossText}
+
+Rules / Quy tắc:
+- Always translate fully into Vietnamese.
+- Do NOT leave Japanese, Chinese, or Korean text untranslated.
+- Do NOT add numbering, notes, or explanations.
+- Keep fluent and context-appropriate Vietnamese.
+- If the source is an in-game name or technical term, translate the meaning, not pronunciation.
+- If a term is untranslatable (e.g. UI, HP, MP), keep it as-is.
+${HARD_MODE ? '- Hard Mode: Any untranslated or romanized result is invalid.' : ''}
+
+Now translate:
+${text}
+`;
+
+  try {
+    const r = UrlFetchApp.fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'post',
+      headers: {
+        Authorization: 'Bearer ' + getApiKey(),
+        'Content-Type': 'application/json',
+      },
+      payload: JSON.stringify({
+        model: MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt.trim() },
+          { role: 'user', content: userPrompt.trim() }
+        ],
+        temperature: 0.1,
+      }),
+      muteHttpExceptions: true,
+    });
+
+    const j = JSON.parse(r.getContentText());
+    let output = j.choices?.[0]?.message?.content?.trim() || '';
+
+    // 🧹 Làm sạch kết quả
+    output = output
+      .replace(/^\d+\.\s*/gm, '') // xoá numbering
+      .replace(/\n{2,}/g, '\n')
+      .trim();
+
+    return output;
+  } catch (e) {
+    Logger.log(e);
+    return text;
+  }
+}
+
+// ====================== 2️⃣ AUTO EXTRACT TERMS (FULL TARGET - REJECT SAFE + PRESERVE MODE) ======================
+function autoExtractGlossaryTerms() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const tSheet = ss.getSheetByName('Translations');
+  const gSheet = ss.getSheetByName('Glossary');
+  const sSheet = ss.getSheetByName('Glossary_Suggestions') || ss.insertSheet('Glossary_Suggestions');
+
+  const data = tSheet.getDataRange().getValues();
+  const glossary = gSheet.getDataRange().getValues();
+  const suggestionData = sSheet.getDataRange().getValues();
+
+  // 🧱 Thu thập danh sách hiện có
+  const existingMap = new Map();
+  const rejectedSet = new Set();
+  const preservedRows = [suggestionData[0] || ['SourceTerm','TargetTerm','Occurrences','Lang','Status']];
+
+  if (suggestionData.length > 1) {
+    for (let i = 1; i < suggestionData.length; i++) {
+      const [src,tgt,occ,lang,status] = suggestionData[i];
+      if (!src) continue;
+      const key = src.toLowerCase().trim();
+      existingMap.set(key, [src,tgt,occ,lang,status]);
+      if (status && status.toLowerCase() === 'rejected') rejectedSet.add(key);
+      // ✅ Giữ nguyên Rejected / Approved
+      if (status && ['rejected','approved','verified'].includes(status.toLowerCase()))
+        preservedRows.push([src,tgt,occ,lang,status]);
+    }
+  }
+
+  // 🧩 Thu thập dữ liệu bản dịch
+  const translations = [];
+  for (let i = 1; i < data.length; i++) {
+    const [_, ctx, orig, tran, status] = data[i];
+    if (orig && tran) translations.push({ original: orig, translation: tran });
+  }
+  if (!translations.length)
+    return SpreadsheetApp.getUi().alert('⚠️ No data to extract.');
+
+  // 🧠 Trích xuất thuật ngữ mới
+  const termMap = {};
+  for (const pair of translations) {
+    const lang = detectLanguage(pair.original);
+    const srcTerms = extractCandidateTerms(pair.original);
+
+    for (const term of srcTerms) {
+      const key = term.toLowerCase().trim();
+      if (rejectedSet.has(key)) continue; // 🚫 bỏ qua nếu đã Rejected
+      if (!termMap[key]) termMap[key] = { term, lang, translations: [] };
+      const frag = extractFullTargetFragment(term, pair.original, pair.translation);
+      if (frag) termMap[key].translations.push(frag);
+    }
+  }
+
+  // 🧮 Tổng hợp thuật ngữ mới
+  const results = [];
+  for (const t of Object.values(termMap)) {
+    const candidates = t.translations.filter(Boolean);
+    if (candidates.length >= 2) {
+      const counts = {};
+      for (const c of candidates) counts[c] = (counts[c] || 0) + 1;
+      const best = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
+      results.push([t.term,best,candidates.length,t.lang,'Pending']);
+    }
+  }
+
+  // 🧩 Lọc trùng: bỏ từ đã có trong Glossary & Suggestion
+  const filtered = filterDuplicateGlossaryTerms(results, glossary);
+  const final = filtered.filter(r => !existingMap.has(r[0].toLowerCase().trim()));
+
+  // ✅ Ghi lại, nhưng giữ nguyên Rejected/Approved cũ
+  const mergedOutput = preservedRows.concat(final);
+
+  sSheet.clear();
+  sSheet.getRange(1,1,mergedOutput.length,5).setValues(mergedOutput);
+
+  SpreadsheetApp.getUi().alert(`📘 Added ${final.length} new terms. Preserved ${preservedRows.length-1} existing.`);
+}
+
+// 🧠 Helper: giữ nguyên cụm target
+function extractFullTargetFragment(srcTerm, srcText, tgtText) {
+  if (!srcTerm || !srcText || !tgtText) return '';
+  const src = srcText.toLowerCase();
+  const tgt = tgtText.trim();
+
+  const idx = src.indexOf(srcTerm.toLowerCase());
+  if (idx === -1) return '';
+
+  // nếu có câu, trả toàn câu
+  if (tgt.includes('。') || tgt.includes('.') || tgt.includes('!') || tgt.includes('！')) {
+    const segments = tgt.split(/[。.!！]/).map(s => s.trim()).filter(Boolean);
+    return segments.find(s => s.length > 0) || tgt;
+  }
+
+  // nếu dịch ngắn, trả toàn bản dịch
+  if (tgt.length <= 40) return tgt;
+
+  // fallback: lấy đoạn tương ứng khoảng 40 ký tự
+  const posRatio = idx / srcText.length;
+  const start = Math.max(0, Math.floor(tgt.length * posRatio) - 15);
+  const end = Math.min(tgt.length, start + 40);
+  return tgt.substring(start, end).trim();
+}
+
+// ====================== 3️⃣ APPROVE / CLEAN / MERGE ======================
+function approveAndCleanSuggestedTerms() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sSheet = ss.getSheetByName('Glossary_Suggestions');
+  const gSheet = ss.getSheetByName('Glossary');
+
+  const data = sSheet.getDataRange().getValues();
+  const gData = gSheet.getDataRange().getValues();
+
+  const approved = data.filter((r, i) => i > 0 && r[4]?.toLowerCase() === 'approved');
+  if (!approved.length)
+    return SpreadsheetApp.getUi().alert('⚠️ No approved terms found.');
+
+  // ✨ Thêm vào Glossary chính
+  const existing = new Set(gData.slice(1).map(r => r[0]?.toLowerCase()));
+  let added = 0;
+  for (const r of approved) {
+    if (!existing.has(r[0].toLowerCase())) {
+      gSheet.appendRow([r[0], r[1], 'Approved']);
+      added++;
+    }
+  }
+
+  // 🧹 Xóa các dòng đã Approved khỏi Glossary_Suggestions
+  const remain = [data[0]];
+  for (let i = 1; i < data.length; i++) {
+    const status = data[i][4]?.toLowerCase() || '';
+    if (status !== 'approved') remain.push(data[i]);
+  }
+  sSheet.clear();
+  sSheet.getRange(1, 1, remain.length, 5).setValues(remain);
+
+  SpreadsheetApp.getUi().alert(`🪶 Approved & cleaned ${added} terms. ${remain.length - 1} remaining.`);
+}
+
+function handleRejectedTerms() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName('Glossary_Suggestions');
+  const data = sheet.getDataRange().getValues();
+  const remain = [data[0]];
+  for (let i = 1; i < data.length; i++) if (data[i][4].toLowerCase() !== 'rejected') remain.push(data[i]);
+  sheet.clear(); sheet.getRange(1,1,remain.length,5).setValues(remain);
+  SpreadsheetApp.getUi().alert('🧱 Removed rejected terms.');
+}
+
+function smartMergeGlossary() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const g = ss.getSheetByName('Glossary');
+  const data = g.getDataRange().getValues();
+  const merged = [data[0]];
+  const seen = {};
+  for (let i = 1; i < data.length; i++) {
+    const [src,tgt,note] = data[i];
+    const k = src?.toLowerCase();
+    if (!k) continue;
+    if (!seen[k]) seen[k] = { src, tgt, note };
+    else if (note === 'Approved') seen[k].note = 'Approved';
+  }
+  for (const k in seen) merged.push([seen[k].src, seen[k].tgt, seen[k].note]);
+  g.clear(); g.getRange(1,1,merged.length,3).setValues(merged);
+  SpreadsheetApp.getUi().alert('✅ Glossary merged successfully.');
+}
+
+// ====================== 4️⃣ HELPERS ======================
+function detectLanguage(text){
+  if(/[ぁ-んァ-ヴー]/.test(text)) return 'JP';
+  if(/[\u4E00-\u9FFF]/.test(text)) return 'ZH';
+  if(/[가-힣]/.test(text)) return 'KO';
+  if(/[À-ỹ]/.test(text)) return 'VI';
+  return 'EN';
+}
+function extractCandidateTerms(text){
+  if(!text)return[];
+  const en=text.match(/\b[A-Z][a-z]{2,}\b/g)||[];
+  const acr=text.match(/\b[A-Z]{2,}\b/g)||[];
+  const jp=text.match(/[ぁ-んァ-ヴー一-龯]{2,}/g)||[];
+  const zh=text.match(/[\u4E00-\u9FFF]{2,}/g)||[];
+  const ko=text.match(/[가-힣]{2,}/g)||[];
+  const vi=text.match(/[A-Za-zÀ-ỹ]{3,}/g)||[];
+  return [...new Set([...en,...acr,...jp,...zh,...ko,...vi])];
+}
+function filterGlossaryForText(gl,text){
+  const f=[gl[0]];const lower=text.toLowerCase();
+  for(let i=1;i<gl.length;i++){const s=gl[i][0];if(s&&lower.includes(s.toLowerCase()))f.push(gl[i]);}
+  return f.length>1?f:[gl[0],...gl.slice(1,16)];
+}
+function buildGlossaryText(gl){return gl.slice(1).map(r=>`"${r[0]}"→"${r[1]}"`).join('\n');}
+function mockTranslateWithGlossary(t,g){let x=t;for(let i=1;i<g.length;i++){const s=g[i][0],tg=g[i][1];if(s&&tg)x=x.replace(new RegExp(s,'gi'),tg);}return x+' (Mock)';}
+function filterDuplicateGlossaryTerms(arr,glo){
+  const set=new Set(glo.slice(1).map(r=>r[0]?.toLowerCase().trim()).filter(Boolean));
+  return arr.filter(a=>!set.has(a[0].toLowerCase().trim()));
+}
+
+// ====================== 5️⃣ MENU ======================
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('🧠 AI Translator')
+    .addItem('⚡ Translate Pending Rows','translatePendingRows')
+    .addItem('📘 Auto Extract Glossary Terms','autoExtractGlossaryTerms')
+    .addSeparator()
+    .addItem('🪶 Approve & Clean Suggested Terms','approveAndCleanSuggestedTerms')
+    .addItem('🧱 Handle Rejected Terms','handleRejectedTerms')
+    .addSeparator()
+    .addItem('🧩 Smart Merge Glossary','smartMergeGlossary')
+    .addToUi();
+}
