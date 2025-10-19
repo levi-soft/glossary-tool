@@ -256,31 +256,38 @@ function extractFullTargetFragment(srcTerm, srcText, tgtText) {
 }
 
 // ====================== 3️⃣ APPROVE / CLEAN / MERGE ======================
-function approveSuggestedTerms() {
+function approveAndCleanSuggestedTerms() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sSheet = ss.getSheetByName('Glossary_Suggestions');
   const gSheet = ss.getSheetByName('Glossary');
+
   const data = sSheet.getDataRange().getValues();
   const gData = gSheet.getDataRange().getValues();
 
-  const approved = data.filter((r,i)=>i>0 && r[4].toLowerCase()==='approved');
-  if (!approved.length) return SpreadsheetApp.getUi().alert('No approved terms.');
+  const approved = data.filter((r, i) => i > 0 && r[4]?.toLowerCase() === 'approved');
+  if (!approved.length)
+    return SpreadsheetApp.getUi().alert('⚠️ No approved terms found.');
 
-  const existing = new Set(gData.slice(1).map(r=>r[0]?.toLowerCase()));
+  // ✨ Thêm vào Glossary chính
+  const existing = new Set(gData.slice(1).map(r => r[0]?.toLowerCase()));
+  let added = 0;
   for (const r of approved) {
-    if (!existing.has(r[0].toLowerCase())) gSheet.appendRow([r[0],r[1],'Approved']);
+    if (!existing.has(r[0].toLowerCase())) {
+      gSheet.appendRow([r[0], r[1], 'Approved']);
+      added++;
+    }
   }
-  SpreadsheetApp.getUi().alert(`🪶 Added ${approved.length} approved terms.`);
-}
 
-function cleanApprovedSuggestions() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName('Glossary_Suggestions');
-  const data = sheet.getDataRange().getValues();
+  // 🧹 Xóa các dòng đã Approved khỏi Glossary_Suggestions
   const remain = [data[0]];
-  for (let i = 1; i < data.length; i++) if (data[i][4].toLowerCase() !== 'approved') remain.push(data[i]);
-  sheet.clear(); sheet.getRange(1,1,remain.length,5).setValues(remain);
-  SpreadsheetApp.getUi().alert('🧽 Cleaned approved terms.');
+  for (let i = 1; i < data.length; i++) {
+    const status = data[i][4]?.toLowerCase() || '';
+    if (status !== 'approved') remain.push(data[i]);
+  }
+  sSheet.clear();
+  sSheet.getRange(1, 1, remain.length, 5).setValues(remain);
+
+  SpreadsheetApp.getUi().alert(`🪶 Approved & cleaned ${added} terms. ${remain.length - 1} remaining.`);
 }
 
 function handleRejectedTerms() {
@@ -346,10 +353,9 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('🧠 AI Translator')
     .addItem('⚡ Translate Pending Rows','translatePendingRows')
-    .addItem('📘 Auto Extract Glossary Terms (Full Target)','autoExtractGlossaryTerms')
+    .addItem('📘 Auto Extract Glossary Terms','autoExtractGlossaryTerms')
     .addSeparator()
-    .addItem('🪶 Approve Suggested Terms','approveSuggestedTerms')
-    .addItem('🧽 Clean Approved Suggestions','cleanApprovedSuggestions')
+    .addItem('🪶 Approve & Clean Suggested Terms','approveAndCleanSuggestedTerms')
     .addItem('🧱 Handle Rejected Terms','handleRejectedTerms')
     .addSeparator()
     .addItem('🧩 Smart Merge Glossary','smartMergeGlossary')

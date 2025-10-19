@@ -1,64 +1,91 @@
 /**
- * 🧠 AI TRANSLATOR v2.6.9 – APPROVAL MODE (Full Release)
- * ------------------------------------------------------
+ * 🧠 AI TRANSLATOR v2.7.2 – AUTO-RESUME TRANSLATOR
+ * -------------------------------------------------
  * ✅ Multi-language translation (EN/JP/ZH/KO/VI)
  * ✅ Safe async batch
- * ✅ Auto Extract Terms (Full Target for approval)
- * ✅ Approve / Clean / Merge Glossary workflow
+ * ✅ Auto resume via trigger if timeout
+ * ✅ Context-aware + Glossary + Hard Mode
+ * ✅ Reject-safe + Preserve Suggestions
  * Author: Pinus & ChatGPT
- * Date: 2025-10-27
+ * Date: 2025-10-20
  */
 
 // ====================== CONFIG ======================
 const USE_MOCK_AI_ONLY = false;
 const HARD_MODE = true;
-const MAX_ROWS_PER_RUN = 100;
 const MODEL = 'openai/gpt-5-mini';
+const MAX_ROWS_PER_RUN = 30; // Dịch 30 hàng mỗi lần để tránh timeout
 
-// Get API Key securely
+// Lấy API key
 function getApiKey() {
   const key = PropertiesService.getScriptProperties().getProperty('OPENROUTER_API_KEY');
   if (!key) throw new Error('⚠️ Missing OPENROUTER_API_KEY. Add it in Script Properties.');
   return key;
 }
 
-// ====================== 1️⃣ TRANSLATION ======================
+// ====================== 1️⃣ TRANSLATION (AUTO-RESUME) ======================
 function translatePendingRows() {
+  const start = Date.now();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName('Translations');
   const glossary = ss.getSheetByName('Glossary').getDataRange().getValues();
   const data = sheet.getDataRange().getValues();
 
-  const pending = [];
-  for (let i = 1; i < data.length; i++) if (data[i][4] === 'Pending' && data[i][2]) pending.push(i);
-  if (pending.length === 0) return SpreadsheetApp.getUi().alert('✅ No Pending rows.');
-
   const props = PropertiesService.getScriptProperties();
   const lastIndex = Number(props.getProperty('lastRowIndex')) || 0;
-  const slice = pending.slice(lastIndex, lastIndex + MAX_ROWS_PER_RUN);
 
-  const start = Date.now();
+  const pending = [];
+  for (let i = 1; i < data.length; i++)
+    if (data[i][4] === 'Pending' && data[i][2]) pending.push(i);
+
+  if (pending.length === 0) {
+    props.deleteProperty('lastRowIndex');
+    ScriptApp.getProjectTriggers().forEach(t => {
+      if (t.getHandlerFunction() === 'translatePendingRows') ScriptApp.deleteTrigger(t);
+    });
+    return SpreadsheetApp.getUi().alert('✅ All translations completed.');
+  }
+
+  const slice = pending.slice(lastIndex, lastIndex + MAX_ROWS_PER_RUN);
   const batchTexts = slice.map(i => {
-  const context = data[i][1] ? `[Context: ${data[i][1]}] ` : '';
-  return `${context}${data[i][2]}`;
-});
+    const context = data[i][1] ? `[Context: ${data[i][1]}] ` : '';
+    return `${context}${data[i][2]}`;
+  });
   const batches = createAdaptiveBatches(batchTexts, slice);
 
-  for (const b of batches) processBatch(b.texts, b.rows, glossary, sheet);
+  try {
+    for (const b of batches) {
+      const elapsed = (Date.now() - start) / 1000;
+      if (elapsed > 330) throw new Error('Timeout approaching');
+      processBatch(b.texts, b.rows, glossary, sheet);
+      Utilities.sleep(500);
+    }
+  } catch (e) {
+    Logger.log('⏱️ Stopping early to avoid timeout.');
+  }
 
   props.setProperty('lastRowIndex', lastIndex + slice.length);
-  if (lastIndex + slice.length >= pending.length) props.deleteProperty('lastRowIndex');
-
-  const t = ((Date.now() - start) / 1000).toFixed(1);
-  SpreadsheetApp.getUi().alert(`⚡ Translated ${slice.length} rows in ${t}s.`);
+  const done = lastIndex + slice.length;
+  if (done >= pending.length) {
+    props.deleteProperty('lastRowIndex');
+    ScriptApp.getProjectTriggers().forEach(t => {
+      if (t.getHandlerFunction() === 'translatePendingRows') ScriptApp.deleteTrigger(t);
+    });
+    SpreadsheetApp.getUi().alert(`✅ All ${pending.length} rows translated.`);
+  } else {
+    // 🔁 Tự chạy lại sau 1 phút
+    ScriptApp.newTrigger('translatePendingRows').timeBased().after(60 * 1000).create();
+    SpreadsheetApp.getUi().alert(`⚡ Translated ${done}/${pending.length} rows.\n⏳ Will continue automatically in 1 minute.`);
+  }
 }
 
+// Tạo batch con
 function createAdaptiveBatches(texts, rows) {
   const res = [];
   let curT = [], curR = [], len = 0;
   for (let i = 0; i < texts.length; i++) {
     const l = texts[i].length;
-    if (len + l > 2000 || curT.length >= 15) {
+    if (len + l > 2000 || curT.length >= 10) {
       res.push({ texts: curT, rows: curR });
       curT = []; curR = []; len = 0;
     }
@@ -68,6 +95,7 @@ function createAdaptiveBatches(texts, rows) {
   return res;
 }
 
+// Xử lý batch dịch
 function processBatch(texts, rows, glossary, sheet) {
   const combined = texts.map((t,i)=>`${i+1}. ${t}`).join('\n');
   const filteredGlossary = filterGlossaryForText(glossary, combined);
@@ -83,36 +111,32 @@ function processBatch(texts, rows, glossary, sheet) {
   }
 }
 
-// ====================== FIXED: TRUE HARD MODE VIETNAMESE TRANSLATION ======================
+// ====================== 2️⃣ AI TRANSLATION (SONG NGỮ HARD MODE) ======================
 function callBatchAI(text, glossary) {
   const glossText = buildGlossaryText(glossary);
 
-  // ✅ Song ngữ để model hiểu đúng ý
   const systemPrompt = `
 You are a professional localization translator specialized in East Asian languages (Japanese, Chinese, Korean).
-Translate everything **into natural Vietnamese** with correct grammar and tone.
-Never leave untranslated words, never add explanations.
-
+Translate everything into natural Vietnamese.
+Never leave untranslated words or add explanations.
 ---
-Bạn là chuyên gia dịch thuật game & kỹ thuật, chuyên dịch các ngôn ngữ Đông Á (Nhật, Trung, Hàn) sang **tiếng Việt chuẩn tự nhiên**.
-Phải dịch nghĩa, không phiên âm, không giữ nguyên chữ gốc.
+Bạn là chuyên gia dịch thuật game & kỹ thuật, chuyên dịch các ngôn ngữ Đông Á sang tiếng Việt tự nhiên.
 `;
 
   const userPrompt = `
-Translate the following numbered lines into **Vietnamese**, following the glossary and strict rules below.
-Dịch các dòng đánh số dưới đây sang **tiếng Việt** rõ ràng, tự nhiên, tuân thủ nghiêm quy tắc sau:
+Translate the following numbered lines into Vietnamese, following the glossary and rules below.
+Dịch các dòng đánh số dưới đây sang tiếng Việt, rõ ràng, tự nhiên, và tuân thủ nghiêm quy tắc sau:
 
-📘 Glossary (must strictly follow if any match):
+📘 Glossary:
 ${glossText}
 
-Rules / Quy tắc:
+Rules:
 - Always translate fully into Vietnamese.
-- Do NOT leave Japanese, Chinese, or Korean text untranslated.
-- Do NOT add numbering, notes, or explanations.
-- Keep fluent and context-appropriate Vietnamese.
-- If the source is an in-game name or technical term, translate the meaning, not pronunciation.
-- If a term is untranslatable (e.g. UI, HP, MP), keep it as-is.
-${HARD_MODE ? '- Hard Mode: Any untranslated or romanized result is invalid.' : ''}
+- Do NOT keep Japanese, Chinese, or Korean characters.
+- No numbering, no explanations.
+- Keep fluent and context-appropriate tone.
+- If untranslatable (UI, HP, MP) keep it.
+${HARD_MODE ? '- Hard Mode: untranslated result = invalid.' : ''}
 
 Now translate:
 ${text}
@@ -139,9 +163,8 @@ ${text}
     const j = JSON.parse(r.getContentText());
     let output = j.choices?.[0]?.message?.content?.trim() || '';
 
-    // 🧹 Làm sạch kết quả
     output = output
-      .replace(/^\d+\.\s*/gm, '') // xoá numbering
+      .replace(/^\d+\.\s*/gm, '')
       .replace(/\n{2,}/g, '\n')
       .trim();
 
